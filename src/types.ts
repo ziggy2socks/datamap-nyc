@@ -19,6 +19,7 @@ export interface Layer {
   property: keyof ParcelProperties;
   type: 'continuous' | 'categorical';
   colorScale: string[]; // low→high for continuous, categorical values for categorical
+  accentColor: string;  // single color for swatch in sidebar
   categories?: Record<string, string>; // for categorical: value → label
   enabled: boolean;
   opacity: number;

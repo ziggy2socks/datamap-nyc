@@ -15,17 +15,17 @@ export const LAND_USE_LABELS: Record<string, string> = {
 };
 
 export const LAND_USE_COLORS: Record<string, string> = {
-  '01': '#f4a460',
-  '02': '#ffa500',
-  '03': '#ff6347',
-  '04': '#ff4500',
-  '05': '#c71585',
-  '06': '#9370db',
-  '07': '#4169e1',
-  '08': '#20b2aa',
-  '09': '#228b22',
-  '10': '#808080',
-  '11': '#d3d3d3',
+  '01': '#E8C4A0',
+  '02': '#D4A882',
+  '03': '#C08060',
+  '04': '#A06040',
+  '05': '#9B8EC4',
+  '06': '#8080A0',
+  '07': '#8AAAC0',
+  '08': '#80B0A0',
+  '09': '#80AA70',
+  '10': '#C0BDB8',
+  '11': '#E0DDD8',
 };
 
 export const LAYERS: Layer[] = [
@@ -35,9 +35,10 @@ export const LAYERS: Layer[] = [
     description: 'Total open space acreage weighted by distance — gravity model. Higher = more accessible public space.',
     property: 'park_score',
     type: 'continuous',
-    colorScale: ['#0a0c14', '#1a4a1a', '#2d7a2d', '#52c452', '#88ff88'],
+    colorScale: ['#F0EDE6', '#A8CCA8', '#4A8A4A', '#2D6E2D'],
+    accentColor: '#4A8A4A',
     enabled: true,
-    opacity: 0.75,
+    opacity: 0.65,
   },
   {
     id: 'numfloors',
@@ -45,9 +46,10 @@ export const LAYERS: Layer[] = [
     description: 'Number of floors above grade.',
     property: 'numfloors',
     type: 'continuous',
-    colorScale: ['#0a0c14', '#1a2a4a', '#2244aa', '#4488ff', '#aaddff'],
+    colorScale: ['#F0EDE6', '#A8BED4', '#4A7AAA', '#1A4A7A'],
+    accentColor: '#4A7AAA',
     enabled: false,
-    opacity: 0.75,
+    opacity: 0.65,
   },
   {
     id: 'landuse',
@@ -56,8 +58,9 @@ export const LAYERS: Layer[] = [
     property: 'landuse',
     type: 'categorical',
     colorScale: Object.values(LAND_USE_COLORS),
+    accentColor: '#9B8EC4',
     categories: LAND_USE_LABELS,
     enabled: false,
-    opacity: 0.75,
+    opacity: 0.65,
   },
 ];
