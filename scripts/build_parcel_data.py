@@ -204,15 +204,27 @@ def compute_scores(parcels, lats, lngs, acrs, grid):
 
     print(f"[score] Done", flush=True)
 
-    # Normalize via percentile rank (0–100)
-    # Every parcel gets its rank position: "better than X% of NYC parcels"
-    # This spreads the distribution uniformly regardless of raw score skew
-    n = len(scores)
-    order = np.argsort(scores)
-    ranks = np.empty(n, dtype=np.float32)
-    ranks[order] = np.arange(n, dtype=np.float32)
-    norm = np.round(ranks / (n - 1) * 100, 1)
-    return norm.tolist(), scores.tolist()  # percentile ranks + raw gravity values
+    # Percentile rank among NON-PARK parcels only (landuse 09 / unknown excluded)
+    # Park parcels get score -1 (sentinel — filtered out in frontend)
+    # This prevents park parcels from anchoring the 100th percentile
+    EXCLUDE_LU = {'09', '00', ''}
+    scoreable = np.array([
+        i for i, p in enumerate(parcels)
+        if p.get('landuse', '').zfill(2) not in EXCLUDE_LU
+    ], dtype=np.int32)
+
+    sub = scores[scoreable]
+    n = len(sub)
+    order = np.argsort(sub)
+    sub_ranks = np.empty(n, dtype=np.float32)
+    sub_ranks[order] = np.arange(n, dtype=np.float32)
+    prank = np.round(sub_ranks / (n - 1) * 100, 1)
+
+    # Build full output arrays
+    norm = np.full(len(scores), -1.0, dtype=np.float32)  # -1 = excluded
+    norm[scoreable] = prank
+
+    return norm.tolist(), scores.tolist()
 
 
 # ──────────────────────────────────────────────────

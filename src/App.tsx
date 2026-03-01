@@ -34,13 +34,18 @@ function getParkScoreColor(score: number): string {
 }
 
 // Color expressions — use circle-opacity for overall opacity, pure RGB colors here
+// park_score = -1 means "park parcel, excluded from ranking" — render transparent
 const PARK_SCORE_COLOR = [
-  'interpolate', ['linear'], ['get', 'park_score'],
-  0,   'rgb(240,237,230)',
-  20,  'rgb(190,220,190)',
-  50,  'rgb(120,180,120)',
-  80,  'rgb(74,138,74)',
-  100, 'rgb(45,110,45)',
+  'case',
+  ['<', ['get', 'park_score'], 0], 'rgba(0,0,0,0)',
+  [
+    'interpolate', ['linear'], ['get', 'park_score'],
+    0,   'rgb(240,237,230)',
+    20,  'rgb(190,220,190)',
+    50,  'rgb(120,180,120)',
+    80,  'rgb(74,138,74)',
+    100, 'rgb(45,110,45)',
+  ],
 ];
 
 const HEIGHT_COLOR = [
@@ -399,19 +404,30 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <div className="detail-score-value" style={{ color: scoreColor }}>
-                    {selectedParcel.park_score ?? 0}
-                    <span className="detail-score-denom">/100</span>
+                  {(selectedParcel.park_score ?? 0) < 0 ? (
+                    <div className="detail-score-interp" style={{fontStyle:'normal', color:'var(--text-secondary)'}}>
+                      Open space parcel — not ranked
+                    </div>
+                  ) : (
+                    <>
+                      <div className="detail-score-value" style={{ color: scoreColor }}>
+                        {selectedParcel.park_score}
+                        <span className="detail-score-denom">/100</span>
+                      </div>
+                      <div className="detail-score-bar">
+                        <div className="detail-score-fill" style={{
+                          width: `${selectedParcel.park_score}%`,
+                          background: scoreColor,
+                        }} />
+                      </div>
+                    </>
+                  )}
                   </div>
-                  <div className="detail-score-bar">
-                    <div className="detail-score-fill" style={{
-                      width: `${selectedParcel.park_score ?? 0}%`,
-                      background: scoreColor,
-                    }} />
-                  </div>
-                  <div className="detail-score-interp">
-                    Better access than {Math.round(selectedParcel.park_score ?? 0)}% of NYC parcels
-                  </div>
+                  {(selectedParcel.park_score ?? 0) >= 0 && (
+                    <div className="detail-score-interp">
+                      Better access than {Math.round(selectedParcel.park_score)}% of NYC parcels
+                    </div>
+                  )}
                 </>
               )}
             </div>
