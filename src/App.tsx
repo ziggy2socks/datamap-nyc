@@ -33,80 +33,78 @@ function getParkScoreColor(score: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-function buildParkScoreExpression(opacity: number) {
-  return [
-    'interpolate', ['linear'], ['get', 'park_score'],
-    0,   `rgba(240,237,230,${opacity})`,
-    20,  `rgba(190,220,190,${opacity})`,
-    50,  `rgba(120,180,120,${opacity})`,
-    80,  `rgba(74,138,74,${opacity})`,
-    100, `rgba(45,110,45,${opacity})`,
-  ];
-}
+// Color expressions — use circle-opacity for overall opacity, pure RGB colors here
+const PARK_SCORE_COLOR = [
+  'interpolate', ['linear'], ['get', 'park_score'],
+  0,   'rgb(240,237,230)',
+  20,  'rgb(190,220,190)',
+  50,  'rgb(120,180,120)',
+  80,  'rgb(74,138,74)',
+  100, 'rgb(45,110,45)',
+];
 
-function buildHeightExpression(opacity: number) {
-  return [
-    'interpolate', ['linear'], ['get', 'numfloors'],
-    0,  `rgba(240,237,230,${opacity})`,
-    5,  `rgba(190,210,230,${opacity})`,
-    15, `rgba(130,170,210,${opacity})`,
-    30, `rgba(74,122,170,${opacity})`,
-    60, `rgba(26,74,122,${opacity})`,
-  ];
-}
+const HEIGHT_COLOR = [
+  'interpolate', ['linear'], ['get', 'numfloors'],
+  0,  'rgb(240,237,230)',
+  5,  'rgb(190,210,230)',
+  15, 'rgb(130,170,210)',
+  30, 'rgb(74,122,170)',
+  60, 'rgb(26,74,122)',
+];
 
-function buildLandUseExpression(opacity: number) {
+const DENSITY_COLOR = [
+  'interpolate', ['linear'],
+  // density = unitsres / lotarea * 1000 — derived in pipeline
+  // alternatively compute on the fly: ['/', ['*', ['get','unitsres'], 1000], ['+', ['get','lotarea'], 1]]
+  ['/', ['*', ['to-number', ['get', 'unitsres']], 1000], ['+', ['to-number', ['get', 'lotarea']], 1]],
+  0,    'rgb(240,237,230)',
+  0.5,  'rgb(224,196,208)',
+  2,    'rgb(192,128,160)',
+  5,    'rgb(160,80,112)',
+  10,   'rgb(106,24,64)',
+];
+
+const YEARBUILT_COLOR = [
+  'interpolate', ['linear'], ['get', 'yearbuilt'],
+  0,    'rgb(240,237,230)',   // unknown / 0
+  1850, 'rgb(96,64,16)',      // very old
+  1900, 'rgb(160,128,64)',
+  1940, 'rgb(192,168,96)',
+  1970, 'rgb(208,196,140)',
+  2000, 'rgb(220,210,180)',
+  2020, 'rgb(240,237,230)',   // brand new = neutral
+];
+
+function buildLandUseExpression() {
   const cases: unknown[] = ['match', ['get', 'landuse']];
   Object.entries(LAND_USE_COLORS).forEach(([code, color]) => {
     const r = parseInt(color.slice(1, 3), 16);
     const g = parseInt(color.slice(3, 5), 16);
     const b = parseInt(color.slice(5, 7), 16);
     cases.push(code);
-    cases.push(`rgba(${r},${g},${b},${opacity})`);
+    cases.push(`rgb(${r},${g},${b})`);
   });
-  cases.push(`rgba(200,198,195,${opacity})`);
+  cases.push('rgb(200,198,195)');
   return cases;
 }
 
-const LIGHT_MAP_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-  sources: {
-    protomaps: {
-      type: 'vector',
-      url: 'pmtiles:https://build.protomaps.com/20240828.pmtiles',
-      attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
-    },
-  },
-  layers: [
-    { id: 'background', type: 'background', paint: { 'background-color': '#F2EFE9' } },
-    {
-      id: 'water', type: 'fill', source: 'protomaps', 'source-layer': 'water',
-      paint: { 'fill-color': '#D4E4EE' },
-    },
-    {
-      id: 'natural', type: 'fill', source: 'protomaps', 'source-layer': 'natural',
-      paint: { 'fill-color': '#E2EDD8' },
-    },
-    {
-      id: 'roads_minor', type: 'line', source: 'protomaps', 'source-layer': 'roads',
-      paint: { 'line-color': '#DDD9D2', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 15, 1.5] as maplibregl.DataDrivenPropertyValueSpecification<number> },
-    },
-    {
-      id: 'roads_major', type: 'line', source: 'protomaps', 'source-layer': 'roads',
-      paint: { 'line-color': '#C8C3BA', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 3] as maplibregl.DataDrivenPropertyValueSpecification<number> },
-    },
-    {
-      id: 'labels', type: 'symbol', source: 'protomaps', 'source-layer': 'places',
-      layout: {
-        'text-field': ['get', 'name'] as maplibregl.DataDrivenPropertyValueSpecification<string>,
-        'text-font': ['Noto Sans Regular'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 10, 10, 15, 13] as maplibregl.DataDrivenPropertyValueSpecification<number>,
+function buildMapStyle(): maplibregl.StyleSpecification {
+  // Simple raster fallback using Carto light tiles — always works, no key needed
+  return {
+    version: 8,
+    sources: {
+      'carto-light': {
+        type: 'raster',
+        tiles: ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'],
+        tileSize: 256,
+        attribution: '© <a href="https://carto.com">Carto</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
       },
-      paint: { 'text-color': '#8A8580', 'text-halo-color': '#F2EFE9', 'text-halo-width': 1.5 },
     },
-  ],
-};
+    layers: [
+      { id: 'carto-light', type: 'raster', source: 'carto-light' },
+    ],
+  };
+}
 
 export default function App() {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -123,7 +121,7 @@ export default function App() {
 
     const map = new maplibregl.Map({
       container: mapRef.current,
-      style: LIGHT_MAP_STYLE,
+      style: buildMapStyle(),
       center: [-73.9857, 40.7484],
       zoom: 12,
     });
@@ -136,65 +134,54 @@ export default function App() {
         url: `pmtiles://${window.location.origin}${PMTILES_URL}`,
       });
 
-      // Park score layer (default ON)
-      map.addLayer({
-        id: 'parcels-park-score',
-        type: 'fill',
-        source: 'parcels',
-        'source-layer': 'parcels',
-        paint: {
-          'fill-color': buildParkScoreExpression(0.65) as maplibregl.DataDrivenPropertyValueSpecification<string>,
-          'fill-outline-color': 'rgba(0,0,0,0.08)',
-        },
-      });
+      const circleRadius = [
+        'interpolate', ['linear'], ['zoom'],
+        10, 1.5, 13, 3, 15, 6, 17, 12,
+      ] as maplibregl.DataDrivenPropertyValueSpecification<number>;
 
-      // Building height layer (default OFF)
-      map.addLayer({
-        id: 'parcels-height',
-        type: 'fill',
-        source: 'parcels',
-        'source-layer': 'parcels',
-        paint: {
-          'fill-color': buildHeightExpression(0.65) as maplibregl.DataDrivenPropertyValueSpecification<string>,
-          'fill-outline-color': 'rgba(0,0,0,0.08)',
-        },
-        layout: { visibility: 'none' },
-      });
+      const addParcelLayer = (id: string, color: unknown, visible: boolean) => {
+        map.addLayer({
+          id,
+          type: 'circle',
+          source: 'parcels',
+          'source-layer': 'parcels',
+          paint: {
+            'circle-color': color as maplibregl.DataDrivenPropertyValueSpecification<string>,
+            'circle-radius': circleRadius,
+            'circle-stroke-width': 0,
+            'circle-opacity': 0.75,
+          },
+          layout: { visibility: visible ? 'visible' : 'none' },
+        });
+      };
 
-      // Land use layer (default OFF)
-      map.addLayer({
-        id: 'parcels-landuse',
-        type: 'fill',
-        source: 'parcels',
-        'source-layer': 'parcels',
-        paint: {
-          'fill-color': buildLandUseExpression(0.65) as maplibregl.DataDrivenPropertyValueSpecification<string>,
-          'fill-outline-color': 'rgba(0,0,0,0.08)',
-        },
-        layout: { visibility: 'none' },
-      });
+      addParcelLayer('parcels-park-score', PARK_SCORE_COLOR, true);
+      addParcelLayer('parcels-height',     HEIGHT_COLOR,     false);
+      addParcelLayer('parcels-density',    DENSITY_COLOR,    false);
+      addParcelLayer('parcels-yearbuilt',  YEARBUILT_COLOR,  false);
+      addParcelLayer('parcels-landuse',    buildLandUseExpression(), false);
 
-      // Parcel hover highlight
+      // Hover ring
       map.addLayer({
         id: 'parcels-hover',
-        type: 'fill',
+        type: 'circle',
         source: 'parcels',
         'source-layer': 'parcels',
         paint: {
-          'fill-color': 'rgba(26,24,20,0.12)',
-          'fill-outline-color': 'rgba(26,24,20,0.4)',
+          'circle-color': 'rgba(26,24,20,0)',
+          'circle-radius': circleRadius,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(26,24,20,0.6)',
         },
         filter: ['==', ['get', 'bbl'], ''],
       });
 
-      // Click handler
       const handleClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
         if (e.features?.[0]) setSelectedParcel(e.features[0].properties as ParcelProperties);
       };
 
-      map.on('click', 'parcels-park-score', handleClick);
-      map.on('click', 'parcels-height', handleClick);
-      map.on('click', 'parcels-landuse', handleClick);
+      const PARCEL_LAYER_IDS = ['parcels-park-score','parcels-height','parcels-density','parcels-yearbuilt','parcels-landuse'];
+      PARCEL_LAYER_IDS.forEach(id => map.on('click', id, handleClick));
 
       // Hover effects
       let hoveredBBL = '';
@@ -203,7 +190,7 @@ export default function App() {
         map.setFilter('parcels-hover', ['==', ['get', 'bbl'], bbl]);
       };
 
-      ['parcels-park-score', 'parcels-height', 'parcels-landuse'].forEach(layerId => {
+      PARCEL_LAYER_IDS.forEach(layerId => {
         map.on('mousemove', layerId, (e) => {
           const bbl = e.features?.[0]?.properties?.bbl ?? '';
           if (bbl !== hoveredBBL) setHover(bbl);
@@ -230,20 +217,25 @@ export default function App() {
     const layerMap: Record<string, string> = {
       park_score: 'parcels-park-score',
       numfloors:  'parcels-height',
+      density:    'parcels-density',
+      yearbuilt:  'parcels-yearbuilt',
       landuse:    'parcels-landuse',
+    };
+
+    const colorMap: Record<string, unknown> = {
+      park_score: PARK_SCORE_COLOR,
+      numfloors:  HEIGHT_COLOR,
+      density:    DENSITY_COLOR,
+      yearbuilt:  YEARBUILT_COLOR,
+      landuse:    buildLandUseExpression(),
     };
 
     layers.forEach(layer => {
       const mapLayerId = layerMap[layer.id];
       if (!mapLayerId) return;
       map.setLayoutProperty(mapLayerId, 'visibility', layer.enabled ? 'visible' : 'none');
-      if (layer.id === 'park_score') {
-        map.setPaintProperty(mapLayerId, 'fill-color', buildParkScoreExpression(layer.opacity) as maplibregl.DataDrivenPropertyValueSpecification<string>);
-      } else if (layer.id === 'numfloors') {
-        map.setPaintProperty(mapLayerId, 'fill-color', buildHeightExpression(layer.opacity) as maplibregl.DataDrivenPropertyValueSpecification<string>);
-      } else if (layer.id === 'landuse') {
-        map.setPaintProperty(mapLayerId, 'fill-color', buildLandUseExpression(layer.opacity) as maplibregl.DataDrivenPropertyValueSpecification<string>);
-      }
+      map.setPaintProperty(mapLayerId, 'circle-color', colorMap[layer.id] as maplibregl.DataDrivenPropertyValueSpecification<string>);
+      map.setPaintProperty(mapLayerId, 'circle-opacity', layer.opacity);
     });
   }, [layers, mapLoaded]);
 
@@ -278,6 +270,7 @@ export default function App() {
   };
 
   const scoreColor = selectedParcel ? getParkScoreColor(selectedParcel.park_score ?? 0) : '#4A8A4A';
+  const [showMethodology, setShowMethodology] = useState(false);
 
   return (
     <div className="app">
@@ -384,17 +377,43 @@ export default function App() {
             </div>
 
             <div className="detail-score-section">
-              <div className="detail-score-label">Park Access Score</div>
-              <div className="detail-score-value" style={{ color: scoreColor }}>
-                {selectedParcel.park_score ?? 0}
-                <span style={{ fontSize: 14, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>/100</span>
+              <div className="detail-score-label-row">
+                <span className="detail-score-label">Park Access</span>
+                <button
+                  className="detail-info-btn"
+                  onClick={() => setShowMethodology(v => !v)}
+                  title="How this score is calculated"
+                >
+                  {showMethodology ? '✕' : 'ⓘ'}
+                </button>
               </div>
-              <div className="detail-score-bar">
-                <div className="detail-score-fill" style={{
-                  width: `${selectedParcel.park_score ?? 0}%`,
-                  background: scoreColor,
-                }} />
-              </div>
+
+              {showMethodology ? (
+                <div className="detail-methodology">
+                  <p><strong>Gravity model</strong> — measures cumulative access to all open spaces within 1 mile.</p>
+                  <p className="detail-methodology-formula">score = Σ acres<sub>i</sub> / (dist<sub>i</sub> + 50)²</p>
+                  <p>Distance is measured to the <em>nearest edge</em> of each park polygon — not its centroid. A parcel touching Central Park's edge gets the same distance (≈0) as one inside it.</p>
+                  <p>The final score is a <strong>percentile rank</strong> across all 857k NYC parcels. A score of 35 means this parcel has better park access than 35% of NYC parcels — and worse access than 64%.</p>
+                  <p className="detail-methodology-raw">Raw gravity value: <span className="detail-mono">{selectedParcel.park_gravity?.toFixed(4) ?? '—'}</span> acres/m²</p>
+                  <p className="detail-methodology-src">Source: NYC Parks Open Space (2024) · NYC MapPLUTO 24v2</p>
+                </div>
+              ) : (
+                <>
+                  <div className="detail-score-value" style={{ color: scoreColor }}>
+                    {selectedParcel.park_score ?? 0}
+                    <span className="detail-score-denom">/100</span>
+                  </div>
+                  <div className="detail-score-bar">
+                    <div className="detail-score-fill" style={{
+                      width: `${selectedParcel.park_score ?? 0}%`,
+                      background: scoreColor,
+                    }} />
+                  </div>
+                  <div className="detail-score-interp">
+                    Better access than {Math.round(selectedParcel.park_score ?? 0)}% of NYC parcels
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="detail-grid">

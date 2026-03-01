@@ -24,11 +24,16 @@ body {
   position: fixed;
   inset: 0;
   display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .map {
   flex: 1;
   position: relative;
+  height: 100%;
+  min-width: 0;
 }
 
 /* ── Sidebar ── */
@@ -342,13 +347,29 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.detail-score-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
 .detail-score-label {
   font-size: 8px;
   letter-spacing: 0.15em;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  margin-bottom: 8px;
 }
+
+.detail-info-btn {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.detail-info-btn:hover { color: var(--text); }
 
 .detail-score-value {
   font-family: var(--font-mono);
@@ -356,6 +377,12 @@ body {
   font-weight: 400;
   line-height: 1;
   margin-bottom: 8px;
+}
+
+.detail-score-denom {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
 }
 
 .detail-score-bar {
@@ -368,6 +395,53 @@ body {
 .detail-score-fill {
   height: 100%;
   transition: width 0.3s ease;
+}
+
+.detail-score-interp {
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* Methodology panel */
+.detail-methodology {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.detail-methodology p { margin: 0; }
+.detail-methodology strong { color: var(--text); font-weight: 600; }
+.detail-methodology em { color: var(--text); font-style: normal; font-weight: 500; }
+
+.detail-methodology-formula {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg);
+  padding: 6px 8px;
+  border-left: 2px solid var(--border);
+  color: var(--text);
+}
+
+.detail-methodology-raw {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.detail-methodology-src {
+  font-size: 8px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.05em;
+}
+
+.detail-mono {
+  font-family: var(--font-mono);
+  color: var(--text);
 }
 
 .detail-grid {

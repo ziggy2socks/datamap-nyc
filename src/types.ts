@@ -9,7 +9,9 @@ export interface ParcelProperties {
   yearbuilt: number;
   unitsres: number;
   bldgclass: string;
-  park_score: number; // 0–100 normalized gravity score
+  park_score: number;    // 0–100 percentile rank
+  park_gravity: number;  // raw gravity value: Σ acres/(dist_m + 50)²
+  density: number;       // derived: unitsres / lotarea * 1000
 }
 
 export interface Layer {
@@ -18,9 +20,9 @@ export interface Layer {
   description: string;
   property: keyof ParcelProperties;
   type: 'continuous' | 'categorical';
-  colorScale: string[]; // low→high for continuous, categorical values for categorical
-  accentColor: string;  // single color for swatch in sidebar
-  categories?: Record<string, string>; // for categorical: value → label
+  colorScale: string[];
+  accentColor: string;
+  categories?: Record<string, string>;
   enabled: boolean;
   opacity: number;
 }
