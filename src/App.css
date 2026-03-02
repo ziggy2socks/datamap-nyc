@@ -653,7 +653,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 5px 0;
+  padding: 5px 10px;
   background: none;
   border: none;
   color: var(--text-tertiary);
