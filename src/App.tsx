@@ -990,8 +990,9 @@ export default function App() {
       }
       return prev.map(l => {
         if (l.id === id) return { ...l, enabled: !l.enabled };
-        // If turning this layer ON, turn all others OFF (radio behavior)
-        if (turningOn) return { ...l, enabled: false };
+        // If turning this layer ON, turn all non-reference layers OFF (radio behavior)
+        // Reference layers (e.g. Open Space Boundaries) are independent overlays
+        if (turningOn && !l.isReference && !target?.isReference) return { ...l, enabled: false };
         return l;
       });
     });

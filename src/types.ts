@@ -49,6 +49,7 @@ export interface Layer {
   categories?: Record<string, string>;
   enabled: boolean;
   opacity: number;
+  isReference?: boolean;  // If true, excluded from radio (can be on alongside other layers)
 }
 
 export interface LayerGroup {

@@ -71,6 +71,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
         accentColor: '#4A8A4A',
         enabled: false,
         opacity: 0.7,
+        isReference: true,
       },
       {
         id: 'flood_100yr',
