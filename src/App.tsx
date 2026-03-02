@@ -80,6 +80,19 @@ const YEARBUILT_COLOR = [
   2020, 'rgb(240,237,230)',   // brand new = neutral
 ];
 
+// Binary flood layers — 0=no risk (transparent), 1=in zone (color)
+const FLOOD_100YR_COLOR = [
+  'case',
+  ['==', ['get', 'flood_100yr'], 1], 'rgb(74,122,176)',
+  'rgba(0,0,0,0)',
+];
+
+const FLOOD_STORM_COLOR = [
+  'case',
+  ['==', ['get', 'flood_storm'], 1], 'rgb(122,74,176)',
+  'rgba(0,0,0,0)',
+];
+
 function buildLandUseExpression() {
   const cases: unknown[] = ['match', ['get', 'landuse']];
   Object.entries(LAND_USE_COLORS).forEach(([code, color]) => {
@@ -161,11 +174,13 @@ export default function App() {
         });
       };
 
-      addParcelLayer('parcels-park-score', PARK_SCORE_COLOR, true);
-      addParcelLayer('parcels-height',     HEIGHT_COLOR,     false);
-      addParcelLayer('parcels-density',    DENSITY_COLOR,    false);
-      addParcelLayer('parcels-yearbuilt',  YEARBUILT_COLOR,  false);
-      addParcelLayer('parcels-landuse',    buildLandUseExpression(), false);
+      addParcelLayer('parcels-park-score',  PARK_SCORE_COLOR,      true);
+      addParcelLayer('parcels-flood-100yr', FLOOD_100YR_COLOR,     false);
+      addParcelLayer('parcels-flood-storm', FLOOD_STORM_COLOR,     false);
+      addParcelLayer('parcels-height',      HEIGHT_COLOR,          false);
+      addParcelLayer('parcels-density',     DENSITY_COLOR,         false);
+      addParcelLayer('parcels-yearbuilt',   YEARBUILT_COLOR,       false);
+      addParcelLayer('parcels-landuse',     buildLandUseExpression(), false);
 
       // Hover ring
       map.addLayer({
@@ -186,7 +201,7 @@ export default function App() {
         if (e.features?.[0]) setSelectedParcel(e.features[0].properties as ParcelProperties);
       };
 
-      const PARCEL_LAYER_IDS = ['parcels-park-score','parcels-height','parcels-density','parcels-yearbuilt','parcels-landuse'];
+      const PARCEL_LAYER_IDS = ['parcels-park-score','parcels-flood-100yr','parcels-flood-storm','parcels-height','parcels-density','parcels-yearbuilt','parcels-landuse'];
       PARCEL_LAYER_IDS.forEach(id => map.on('click', id, handleClick));
 
       // Hover effects
@@ -221,19 +236,23 @@ export default function App() {
     const map = mapInstance.current;
 
     const layerMap: Record<string, string> = {
-      park_score: 'parcels-park-score',
-      numfloors:  'parcels-height',
-      density:    'parcels-density',
-      yearbuilt:  'parcels-yearbuilt',
-      landuse:    'parcels-landuse',
+      park_score:  'parcels-park-score',
+      flood_100yr: 'parcels-flood-100yr',
+      flood_storm: 'parcels-flood-storm',
+      numfloors:   'parcels-height',
+      density:     'parcels-density',
+      yearbuilt:   'parcels-yearbuilt',
+      landuse:     'parcels-landuse',
     };
 
     const colorMap: Record<string, unknown> = {
-      park_score: PARK_SCORE_COLOR,
-      numfloors:  HEIGHT_COLOR,
-      density:    DENSITY_COLOR,
-      yearbuilt:  YEARBUILT_COLOR,
-      landuse:    buildLandUseExpression(),
+      park_score:  PARK_SCORE_COLOR,
+      flood_100yr: FLOOD_100YR_COLOR,
+      flood_storm: FLOOD_STORM_COLOR,
+      numfloors:   HEIGHT_COLOR,
+      density:     DENSITY_COLOR,
+      yearbuilt:   YEARBUILT_COLOR,
+      landuse:     buildLandUseExpression(),
     };
 
     layers.forEach(layer => {
@@ -361,6 +380,12 @@ export default function App() {
                             <span className="legend-label">High</span>
                           </div>
                         )}
+                        {layer.type === 'binary' && (
+                          <div className="layer-legend">
+                            <span className="category-dot" style={{ background: layer.accentColor, borderRadius: '2px', width: '10px', height: '10px', display: 'inline-block', marginRight: 6 }} />
+                            <span className="legend-label" style={{ color: 'var(--text-secondary)' }}>In flood zone</span>
+                          </div>
+                        )}
                         {layer.type === 'categorical' && layer.categories && (
                           <div className="layer-categories">
                             {Object.entries(layer.categories).map(([code, lbl]) => (
@@ -470,6 +495,22 @@ export default function App() {
                 <div className="detail-field-label">BBL</div>
                 <div className="detail-field-value detail-muted">{selectedParcel.bbl || '—'}</div>
               </div>
+              {'flood_100yr' in selectedParcel && (
+                <div className="detail-field">
+                  <div className="detail-field-label">100yr Flood</div>
+                  <div className="detail-field-value" style={{ color: selectedParcel.flood_100yr ? '#4A7AB0' : 'var(--text-secondary)' }}>
+                    {selectedParcel.flood_100yr ? '⚠ In zone' : 'Not in zone'}
+                  </div>
+                </div>
+              )}
+              {'flood_storm' in selectedParcel && (
+                <div className="detail-field">
+                  <div className="detail-field-label">Stormwater</div>
+                  <div className="detail-field-value" style={{ color: selectedParcel.flood_storm ? '#7A4AB0' : 'var(--text-secondary)' }}>
+                    {selectedParcel.flood_storm ? '⚠ At risk' : 'Not at risk'}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="detail-links">
