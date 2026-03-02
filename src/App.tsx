@@ -12,6 +12,10 @@ type ZoneType = 'elementary' | 'middle' | 'high';
 
 // In dev: served locally. In production: set VITE_PMTILES_URL to external CDN URL.
 const PMTILES_URL = import.meta.env.VITE_PMTILES_URL ?? '/data/parcels.pmtiles';
+// Polygon PMTiles — separate file, served from same R2 bucket
+const POLYGON_PMTILES_URL = import.meta.env.VITE_PMTILES_URL
+  ? import.meta.env.VITE_PMTILES_URL.replace('parcels.pmtiles', 'parcels_polygon.pmtiles')
+  : '/data/parcels_polygon.pmtiles';
 
 // Register PMTiles protocol
 const protocol = new Protocol();
@@ -667,6 +671,38 @@ export default function App() {
         url: `pmtiles://${pmtilesFullUrl}`,
       });
 
+      // Polygon PMTiles source (separate file — MapPLUTO fill geometry)
+      const polygonPmtilesUrl = POLYGON_PMTILES_URL.startsWith('http')
+        ? POLYGON_PMTILES_URL
+        : `${window.location.origin}${POLYGON_PMTILES_URL}`;
+      map.addSource('parcels-polygon', {
+        type: 'vector',
+        url: `pmtiles://${polygonPmtilesUrl}`,
+      });
+      // Polygon fill layer for park access preview — initially hidden
+      map.addLayer({
+        id: 'parcels-polygon-park',
+        type: 'fill',
+        source: 'parcels-polygon',
+        'source-layer': 'parcels_polygon',
+        paint: {
+          'fill-color': [
+            'case',
+            ['<', ['get', 'park_score'], 0], 'rgba(0,0,0,0)',
+            ['interpolate', ['linear'], ['get', 'park_score'],
+              0,   '#F0EDE6',
+              25,  '#C8DDB8',
+              50,  '#8DC07A',
+              75,  '#4A8A4A',
+              100, '#2D6E2D',
+            ],
+          ],
+          'fill-opacity': 0.85,
+          'fill-outline-color': 'rgba(60,80,60,0.25)',
+        },
+        layout: { visibility: 'none' },
+      });
+
       const circleRadius = [
         'interpolate', ['linear'], ['zoom'],
         10, 1.5, 13, 3, 15, 6, 17, 12,
@@ -867,23 +903,25 @@ export default function App() {
     const map = mapInstance.current;
 
     const layerMap: Record<string, string> = {
-      park_score:  'parcels-park-score',
-      flood_100yr: 'parcels-flood-100yr',
-      flood_storm: 'parcels-flood-storm',
-      numfloors:   'parcels-height',
-      density:     'parcels-density',
-      yearbuilt:   'parcels-yearbuilt',
-      landuse:     'parcels-landuse',
+      park_score:   'parcels-park-score',
+      flood_100yr:  'parcels-flood-100yr',
+      flood_storm:  'parcels-flood-storm',
+      numfloors:    'parcels-height',
+      density:      'parcels-density',
+      yearbuilt:    'parcels-yearbuilt',
+      landuse:      'parcels-landuse',
+      polygon_park: 'parcels-polygon-park',
     };
 
     const colorMap: Record<string, unknown> = {
-      park_score:  PARK_SCORE_COLOR,
-      flood_100yr: FLOOD_100YR_COLOR,
-      flood_storm: FLOOD_STORM_COLOR,
-      numfloors:   HEIGHT_COLOR,
-      density:     DENSITY_COLOR,
-      yearbuilt:   YEARBUILT_COLOR,
-      landuse:     buildLandUseExpression(),
+      park_score:   PARK_SCORE_COLOR,
+      flood_100yr:  FLOOD_100YR_COLOR,
+      flood_storm:  FLOOD_STORM_COLOR,
+      numfloors:    HEIGHT_COLOR,
+      density:      DENSITY_COLOR,
+      yearbuilt:    YEARBUILT_COLOR,
+      landuse:      buildLandUseExpression(),
+      polygon_park: null, // polygon layer uses fill-color, not circle-color
     };
 
     // Binary layers use per-feature opacity expressions; others use uniform opacity
@@ -899,21 +937,34 @@ export default function App() {
       park_score:  ['open-space-poly-fill',  'open-space-poly-outline'],
     };
 
+    // Layers that use fill geometry instead of circle
+    const fillLayers = new Set(['polygon_park']);
+
     layers.forEach(layer => {
       const mapLayerId = layerMap[layer.id];
       if (!mapLayerId) return;
       const vis = layer.enabled ? 'visible' : 'none';
       map.setLayoutProperty(mapLayerId, 'visibility', vis);
-      map.setPaintProperty(mapLayerId, 'circle-color', colorMap[layer.id] as maplibregl.DataDrivenPropertyValueSpecification<string>);
 
       // Sync polygon reference layers
       (polyRefMap[layer.id] ?? []).forEach(polyId => {
         map.setLayoutProperty(polyId, 'visibility', vis);
       });
-      const opacityExpr = opacityMap[layer.id];
-      map.setPaintProperty(mapLayerId, 'circle-opacity',
-        opacityExpr !== undefined ? opacityExpr : layer.opacity
-      );
+
+      if (fillLayers.has(layer.id)) {
+        // Fill layer — use fill-opacity
+        map.setPaintProperty(mapLayerId, 'fill-opacity', layer.opacity);
+      } else {
+        // Circle layer — set color + opacity
+        const color = colorMap[layer.id];
+        if (color !== null) {
+          map.setPaintProperty(mapLayerId, 'circle-color', color as maplibregl.DataDrivenPropertyValueSpecification<string>);
+        }
+        const opacityExpr = opacityMap[layer.id];
+        map.setPaintProperty(mapLayerId, 'circle-opacity',
+          opacityExpr !== undefined ? opacityExpr : layer.opacity
+        );
+      }
     });
   }, [layers, mapLoaded]);
 

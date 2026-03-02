@@ -171,6 +171,29 @@ export const LAYER_GROUPS: LayerGroup[] = [
     ],
   },
   {
+    id: 'preview',
+    label: 'Preview',
+    layers: [
+      {
+        id: 'polygon_park',
+        label: 'Park Access (Polygons)',
+        description: 'Park access score rendered as filled parcel polygons from MapPLUTO. Preview of full polygon migration.',
+        info: {
+          what: 'The same park access score as the dot layer, but rendered as filled parcel footprints using MapPLUTO polygon geometry.',
+          how: 'Parcel polygon geometry from MapPLUTO 25v1 (NYC Planning ArcGIS Online), joined to our park access percentile scores by BBL. Rendered as a fill layer in a separate PMTiles file. This is a preview of what all layers will look like once the full polygon migration is complete.',
+          source: 'Geometry: NYC MapPLUTO, NYC Dept. of City Planning (ArcGIS Online feature service). Scores: same methodology as Park Access dot layer.',
+          caveats: 'Polygon tiles use zoom 12–14 only. At lower zooms, parcel outlines are too dense to be readable — zoom into neighborhood scale to use this layer. This is a preview layer; full polygon migration is planned.',
+        },
+        property: 'park_score',
+        type: 'continuous',
+        colorScale: ['#F0EDE6', '#A8CCA8', '#4A8A4A', '#2D6E2D'],
+        accentColor: '#4A8A4A',
+        enabled: false,
+        opacity: 0.85,
+      },
+    ],
+  },
+  {
     id: 'land',
     label: 'Land',
     layers: [
