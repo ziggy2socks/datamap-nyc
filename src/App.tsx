@@ -851,11 +851,17 @@ export default function App() {
   const toggleLayer = (id: string) => {
     setLayers(prev => {
       const target = prev.find(l => l.id === id);
+      const turningOn = target && !target.enabled;
       // If turning a layer ON, deactivate any active overlay
-      if (target && !target.enabled) {
+      if (turningOn) {
         setActiveOverlay(null);
       }
-      return prev.map(l => l.id === id ? { ...l, enabled: !l.enabled } : l);
+      return prev.map(l => {
+        if (l.id === id) return { ...l, enabled: !l.enabled };
+        // If turning this layer ON, turn all others OFF (radio behavior)
+        if (turningOn) return { ...l, enabled: false };
+        return l;
+      });
     });
   };
 
