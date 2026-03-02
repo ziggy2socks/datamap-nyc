@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Park Polygons Test</title>
+<script src="https://unpkg.com/maplibre-gl@3/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3/dist/maplibre-gl.css" rel="stylesheet" />
+<style>
+body { margin: 0; }
+#map { height: 100vh; }
+#info { position: absolute; top: 10px; left: 10px; background: white; padding: 10px; font-family: monospace; font-size: 12px; max-width: 300px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="info">Loading...</div>
+<script>
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: { 'carto': { type: 'raster', tiles: ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'], tileSize: 256, attribution: '© CartoDB' }},
+    layers: [{ id: 'carto', type: 'raster', source: 'carto' }]
+  },
+  center: [-73.958, 40.746],
+  zoom: 13
+});
+
+map.on('load', () => {
+  map.addSource('parks', { type: 'geojson', data: '/data/open_spaces.geojson' });
+  map.addLayer({ id: 'parks-fill', type: 'fill', source: 'parks', paint: { 'fill-color': 'rgba(74,138,74,0.4)', 'fill-opacity': 1 }});
+  map.addLayer({ id: 'parks-outline', type: 'line', source: 'parks', paint: { 'line-color': 'rgba(74,138,74,0.9)', 'line-width': 1.5 }});
+  
+  // Check feature count and report
+  map.on('sourcedata', (e) => {
+    if (e.sourceId === 'parks' && e.isSourceLoaded) {
+      const feats = map.querySourceFeatures('parks', { sourceLayer: '' });
+      // Count by querying rendered
+      document.getElementById('info').innerHTML = 
+        'Source loaded. Zoom in on LIC waterfront to see Gantry Plaza.<br>' +
+        'Red marker = Gantry expected location.';
+    }
+  });
+
+  // Add Gantry marker
+  new maplibregl.Marker({ color: 'red' }).setLngLat([-73.957, 40.747]).addTo(map);
+});
+
+map.on('click', 'parks-fill', (e) => {
+  if (e.features?.length) {
+    const p = e.features[0].properties;
+    document.getElementById('info').innerHTML = 
+      `<b>${p.name || '?'}</b><br>acres: ${p.acres}<br>source: ${p.source}<br>type: ${p.type}`;
+  }
+});
+</script>
+</body>
+</html>
