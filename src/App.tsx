@@ -1170,9 +1170,9 @@ export default function App() {
                         </div>
                         {layer.type === 'continuous' && (
                           <div className="layer-legend">
-                            <span className="legend-label">Low</span>
+                            <span className="legend-label">{layer.legendMin ?? 'Low'}</span>
                             <div className="legend-bar" style={{ background: `linear-gradient(to right, ${layer.colorScale.join(', ')})` }} />
-                            <span className="legend-label">High</span>
+                            <span className="legend-label">{layer.legendMax ?? 'High'}</span>
                           </div>
                         )}
                         {layer.type === 'binary' && (

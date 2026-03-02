@@ -44,6 +44,8 @@ export interface Layer {
   type: 'continuous' | 'categorical' | 'binary';
   colorScale: string[];
   accentColor: string;
+  legendMin?: string;  // Label for low end of gradient (default "Low")
+  legendMax?: string;  // Label for high end of gradient (default "High")
   categories?: Record<string, string>;
   enabled: boolean;
   opacity: number;
