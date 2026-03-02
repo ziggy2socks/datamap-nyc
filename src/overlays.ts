@@ -81,7 +81,9 @@ export function getFieldValue(
 
 /**
  * Compute composite score for a parcel given an overlay definition.
- * Returns null if no overlay layers have valid data for this parcel.
+ * Returns null only if the parcel is a park (park_score = -1) or has no active layers.
+ * Missing/null field values are treated as 0 — they PENALISE the score, not skip it.
+ * This ensures parcels without school zone data don't score the same as ones with great schools.
  */
 export function computeComposite(
   props: Record<string, unknown>,
@@ -90,29 +92,28 @@ export function computeComposite(
   const activeLayers = overlay.layers.filter(l => l.weight > 0);
   if (activeLayers.length === 0) return null;
 
+  // Exclude park parcels (sentinel -1)
+  const parkScore = Number(props['park_score']);
+  if (!isNaN(parkScore) && parkScore < 0) return null;
+
   // Normalise weights to sum to 1
   const totalWeight = activeLayers.reduce((s, l) => s + l.weight, 0);
   if (totalWeight === 0) return null;
 
   let weightedSum = 0;
-  let weightUsed = 0;
 
   for (const layer of activeLayers) {
     let val = getFieldValue(props, layer.id);
-    if (val === null) continue; // skip missing data — don't penalise
+    // Null/missing = 0 (penalise — parcel lacks this quality)
+    if (val === null) val = 0;
 
     if (layer.invert) val = 100 - val;
 
     const w = layer.weight / totalWeight;
     weightedSum += val * w;
-    weightUsed += w;
   }
 
-  if (weightUsed === 0) return null;
-
-  // Re-scale to full 0–100 range based on weights actually used
-  const composite = weightedSum / weightUsed;
-  return Math.round(composite * 10) / 10;
+  return Math.round(weightedSum * 10) / 10;
 }
 
 /**
@@ -128,15 +129,16 @@ export function getLayerBreakdown(
   return overlay.layers
     .filter(l => l.weight > 0)
     .map(layer => {
-      let val = getFieldValue(props, layer.id);
-      const raw = val;
-      if (val !== null && layer.invert) val = 100 - val;
+      const raw = getFieldValue(props, layer.id); // null = no data
+      // For scoring: null treated as 0
+      let val = raw ?? 0;
+      if (layer.invert) val = 100 - val;
       const w = totalWeight > 0 ? layer.weight / totalWeight : 0;
       return {
         id: layer.id,
         label: layer.label,
-        raw,
-        contribution: val !== null ? Math.round(val * w * 10) / 10 : null,
+        raw,  // null preserved so UI can show "no data"
+        contribution: Math.round(val * w * 10) / 10,
         invert: layer.invert,
       };
     });

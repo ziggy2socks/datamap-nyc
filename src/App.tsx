@@ -748,41 +748,69 @@ export default function App() {
     });
 
     mapInstance.current = map;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__map = map;
     return () => { map.remove(); mapInstance.current = null; };
   }, []);
 
-  // Sync active overlay to map — overlay is a static color expression
-  // Note: true per-parcel composites require client-side scoring on tile data,
-  // which MapLibre doesn't natively support. We use a fixed expression approach:
-  // when an overlay is active, we hide all other layers and show the overlay layer
-  // colored by park_score as a proxy (full composite computed on click in detail panel).
-  // TODO: when MapLibre supports custom expressions, switch to full composite coloring.
+  // Build a MapLibre expression for the weighted composite score of an overlay.
+  // For each layer: get field value (0–100), invert if needed, multiply by normalised weight.
+  // Null/missing values are treated as 0 (penalise, not skip) — matches computeComposite.
+  // Binary flood fields: value is 0 or 1, scaled to 0–100 inline.
+  // park_score < 0 means park parcel — those are excluded (transparent).
+  const buildOverlayColorExpr = (overlay: Overlay) => {
+    const activeLayers = overlay.layers.filter(l => l.weight > 0);
+    if (activeLayers.length === 0) return 'rgba(0,0,0,0)';
+
+    const totalWeight = activeLayers.reduce((s, l) => s + l.weight, 0);
+
+    // Build weighted sum expression
+    // Each term: weight_i/totalWeight * (invert ? 100 - val : val)
+    // val: for binary fields use ['*', 100, ['get', field]]; else ['coalesce', ['get', field], 0]
+    // Park parcels excluded via outer case on park_score
+    const terms: unknown[] = ['+'];
+    for (const layer of activeLayers) {
+      const w = layer.weight / totalWeight;
+      const isBinary = layer.id === 'flood_100yr' || layer.id === 'flood_storm';
+      // Raw value: binary 0/1 → scaled to 0–100; percentile fields already 0–100; null → 0
+      const rawExpr = isBinary
+        ? ['*', 100, ['coalesce', ['get', layer.id], 0]]
+        : ['coalesce', ['get', layer.id], 0];
+      // Apply invert
+      const valExpr = layer.invert ? ['-', 100, rawExpr] : rawExpr;
+      // Weighted contribution
+      terms.push(['*', w, valExpr]);
+    }
+
+    const weightedSum = activeLayers.length === 1 ? terms[1] : terms;
+
+    return [
+      'case',
+      // Exclude park parcels (park_score = -1)
+      ['<', ['get', 'park_score'], 0], 'rgba(0,0,0,0)',
+      [
+        'interpolate', ['linear'], weightedSum,
+        0,   'rgb(245,240,230)',
+        20,  'rgb(235,215,180)',
+        40,  'rgb(220,185,120)',
+        60,  'rgb(195,145,60)',
+        80,  'rgb(160,100,20)',
+        100, 'rgb(120,60,10)',
+      ],
+    ];
+  };
+
+  // Sync active overlay to map
   useEffect(() => {
     if (!mapLoaded || !mapInstance.current) return;
     const map = mapInstance.current;
     const isActive = activeOverlay !== null;
 
-    // Show/hide the overlay layer
     map.setLayoutProperty('parcels-overlay', 'visibility', isActive ? 'visible' : 'none');
 
     if (isActive) {
-      // Color the overlay layer using park_score as a warm amber suitability ramp
-      // (full composite coloring is computed at click time for the detail panel)
-      // We use park_score as the primary driver since it's always present;
-      // this is a visual approximation — the true score is shown in the detail panel.
-      map.setPaintProperty('parcels-overlay', 'circle-color', [
-        'case',
-        ['<', ['get', 'park_score'], 0], 'rgba(0,0,0,0)',
-        [
-          'interpolate', ['linear'], ['get', 'park_score'],
-          0,   'rgb(245,240,230)',
-          20,  'rgb(235,215,180)',
-          40,  'rgb(220,185,120)',
-          60,  'rgb(195,145,60)',
-          80,  'rgb(160,100,20)',
-          100, 'rgb(120,60,10)',
-        ],
-      ]);
+      const colorExpr = buildOverlayColorExpr(activeOverlay);
+      map.setPaintProperty('parcels-overlay', 'circle-color', colorExpr as maplibregl.DataDrivenPropertyValueSpecification<string>);
       map.setPaintProperty('parcels-overlay', 'circle-opacity', 0.8);
     }
   }, [activeOverlay, mapLoaded]);
