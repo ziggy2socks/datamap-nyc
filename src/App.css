@@ -124,35 +124,41 @@ body {
 .layers-section {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 0;
+  padding: 0;
 }
 
-.section-label {
-  font-size: 9px;
+/* Group header */
+.layer-group {
+  border-bottom: 1px solid var(--border);
+}
+.layer-group:last-child { border-bottom: none; }
+
+.layer-group-label {
+  font-size: 8px;
   letter-spacing: 0.15em;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  padding: 0 14px 8px;
+  padding: 10px 14px 6px;
 }
 
 .layer-row {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
 }
-.layer-row:last-child { border-bottom: none; }
+.layer-group .layer-row:first-of-type { border-top: none; }
 
 .layer-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
+  gap: 7px;
 }
 
 .layer-swatch {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 2px;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .layer-name {
@@ -160,13 +166,28 @@ body {
   font-weight: 500;
   color: var(--text);
   flex: 1;
+  cursor: pointer;
+  transition: opacity 0.15s;
 }
+
+/* Info button — sits between name and toggle */
+.layer-info-btn {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+.layer-info-btn:hover,
+.layer-info-btn.active { color: var(--text); }
 
 /* Toggle pill */
 .layer-toggle {
   width: 28px;
-  height: 14px;
-  border-radius: 7px;
+  height: 15px;
+  border-radius: 8px;
   background: var(--border);
   border: none;
   cursor: pointer;
@@ -177,28 +198,36 @@ body {
 .layer-toggle.on { background: var(--text); }
 .layer-toggle-dot {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 2.5px;
+  left: 2.5px;
   width: 10px;
   height: 10px;
   border-radius: 50%;
   background: white;
   transition: transform 0.15s;
 }
-.layer-toggle.on .layer-toggle-dot { transform: translateX(14px); }
+.layer-toggle.on .layer-toggle-dot { transform: translateX(13px); }
 
-.layer-desc {
+/* Info panel — expands below header */
+.layer-info-panel {
   font-size: 9px;
   color: var(--text-secondary);
-  line-height: 1.5;
-  margin-top: 8px;
+  line-height: 1.55;
+  margin-top: 6px;
+  padding: 7px 8px;
+  background: var(--bg);
+  border-left: 2px solid var(--border);
+}
+
+/* Controls (opacity + legend) — only when layer is enabled */
+.layer-controls {
+  margin-top: 7px;
 }
 
 .layer-opacity-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .layer-opacity-label {

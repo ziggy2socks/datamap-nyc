@@ -1,4 +1,4 @@
-import type { Layer } from './types';
+import type { Layer, LayerGroup } from './types';
 
 export const LAND_USE_LABELS: Record<string, string> = {
   '01': 'One & Two Family',
@@ -28,61 +28,84 @@ export const LAND_USE_COLORS: Record<string, string> = {
   '11': '#E0DDD8',
 };
 
-export const LAYERS: Layer[] = [
+// ── Layer definitions ────────────────────────────────────────
+
+export const LAYER_GROUPS: LayerGroup[] = [
   {
-    id: 'park_score',
-    label: 'Park Access',
-    description: 'Total open space acreage weighted by distance to nearest park edge — gravity model.',
-    property: 'park_score',
-    type: 'continuous',
-    colorScale: ['#F0EDE6', '#A8CCA8', '#4A8A4A', '#2D6E2D'],
-    accentColor: '#4A8A4A',
-    enabled: true,
-    opacity: 0.75,
+    id: 'environment',
+    label: 'Environment',
+    layers: [
+      {
+        id: 'park_score',
+        label: 'Park Access',
+        description: 'Gravity-based score measuring cumulative access to all open spaces within 1 mile. Accounts for park size and distance — a small nearby park and a large distant park both contribute. Percentile rank across 849k NYC parcels (open space parcels excluded).',
+        property: 'park_score',
+        type: 'continuous',
+        colorScale: ['#F0EDE6', '#A8CCA8', '#4A8A4A', '#2D6E2D'],
+        accentColor: '#4A8A4A',
+        enabled: true,
+        opacity: 0.75,
+      },
+    ],
   },
   {
-    id: 'numfloors',
-    label: 'Building Height',
-    description: 'Number of floors above grade.',
-    property: 'numfloors',
-    type: 'continuous',
-    colorScale: ['#F0EDE6', '#A8BED4', '#4A7AAA', '#1A4A7A'],
-    accentColor: '#4A7AAA',
-    enabled: false,
-    opacity: 0.75,
+    id: 'built',
+    label: 'Built Environment',
+    layers: [
+      {
+        id: 'numfloors',
+        label: 'Building Height',
+        description: 'Number of floors above grade from MapPLUTO. Reveals NYC\'s density patterns — low-rise outer boroughs vs. Manhattan towers. Max recorded: 104 floors (One World Trade).',
+        property: 'numfloors',
+        type: 'continuous',
+        colorScale: ['#F0EDE6', '#A8BED4', '#4A7AAA', '#1A4A7A'],
+        accentColor: '#4A7AAA',
+        enabled: false,
+        opacity: 0.75,
+      },
+      {
+        id: 'yearbuilt',
+        label: 'Year Built',
+        description: 'Year of original construction. NYC\'s building eras: pre-1900 (tenement era), 1900–1940 (pre-war boom), 1940–1970 (postwar expansion), 1970–2000 (stagnation + renewal), 2000+ (contemporary). Darker = older.',
+        property: 'yearbuilt',
+        type: 'continuous',
+        colorScale: ['#F0EDE6', '#D4C4A0', '#A08040', '#604010'],
+        accentColor: '#A08040',
+        enabled: false,
+        opacity: 0.75,
+      },
+      {
+        id: 'density',
+        label: 'Residential Density',
+        description: 'Residential units per 1,000 sq ft of lot area. A proxy for housing density — high values indicate dense apartment buildings, low values indicate single-family homes or commercial uses.',
+        property: 'density',
+        type: 'continuous',
+        colorScale: ['#F0EDE6', '#E0C4D0', '#B06080', '#6A1840'],
+        accentColor: '#B06080',
+        enabled: false,
+        opacity: 0.75,
+      },
+    ],
   },
   {
-    id: 'density',
-    label: 'Residential Density',
-    description: 'Residential units per 1,000 sq ft of lot area — a proxy for neighborhood density.',
-    property: 'density',
-    type: 'continuous',
-    colorScale: ['#F0EDE6', '#E0C4D0', '#B06080', '#6A1840'],
-    accentColor: '#B06080',
-    enabled: false,
-    opacity: 0.75,
-  },
-  {
-    id: 'yearbuilt',
-    label: 'Year Built',
-    description: 'Year of original construction. Reveals NYC\'s building eras — pre-war, postwar, contemporary.',
-    property: 'yearbuilt',
-    type: 'continuous',
-    colorScale: ['#F0EDE6', '#D4C4A0', '#A08040', '#604010'],
-    accentColor: '#A08040',
-    enabled: false,
-    opacity: 0.75,
-  },
-  {
-    id: 'landuse',
-    label: 'Land Use',
-    description: 'NYC DCP land use classification.',
-    property: 'landuse',
-    type: 'categorical',
-    colorScale: Object.values(LAND_USE_COLORS),
-    accentColor: '#9B8EC4',
-    categories: LAND_USE_LABELS,
-    enabled: false,
-    opacity: 0.75,
+    id: 'land',
+    label: 'Land',
+    layers: [
+      {
+        id: 'landuse',
+        label: 'Land Use',
+        description: 'NYC Department of City Planning land use classification. 11 categories covering residential, commercial, industrial, civic, and open space uses. Source: MapPLUTO 24v2.',
+        property: 'landuse',
+        type: 'categorical',
+        colorScale: Object.values(LAND_USE_COLORS),
+        accentColor: '#9B8EC4',
+        categories: LAND_USE_LABELS,
+        enabled: false,
+        opacity: 0.75,
+      },
+    ],
   },
 ];
+
+// Flat list for backwards compatibility
+export const LAYERS: Layer[] = LAYER_GROUPS.flatMap(g => g.layers);

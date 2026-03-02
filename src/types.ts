@@ -9,7 +9,7 @@ export interface ParcelProperties {
   yearbuilt: number;
   unitsres: number;
   bldgclass: string;
-  park_score: number;    // 0–100 percentile rank
+  park_score: number;    // 0–100 percentile rank (−1 = excluded open space parcel)
   park_gravity: number;  // raw gravity value: Σ acres/(dist_m + 50)²
   density: number;       // derived: unitsres / lotarea * 1000
 }
@@ -25,6 +25,12 @@ export interface Layer {
   categories?: Record<string, string>;
   enabled: boolean;
   opacity: number;
+}
+
+export interface LayerGroup {
+  id: string;
+  label: string;
+  layers: Layer[];
 }
 
 export interface SearchResult {

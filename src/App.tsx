@@ -3,7 +3,7 @@ import maplibregl from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { ParcelProperties, Layer } from './types';
-import { LAYERS, LAND_USE_COLORS, LAND_USE_LABELS } from './layers';
+import { LAYER_GROUPS, LAYERS, LAND_USE_COLORS, LAND_USE_LABELS } from './layers';
 import './App.css';
 
 const PMTILES_URL = '/data/parcels.pmtiles';
@@ -115,6 +115,7 @@ export default function App() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<maplibregl.Map | null>(null);
   const [layers, setLayers] = useState<Layer[]>(LAYERS);
+  const [expandedInfo, setExpandedInfo] = useState<string | null>(null); // layer id with open info
   const [selectedParcel, setSelectedParcel] = useState<ParcelProperties | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<unknown[]>([]);
@@ -305,59 +306,76 @@ export default function App() {
           )}
         </div>
 
-        {/* Layers */}
+        {/* Layers — grouped */}
         <div className="layers-section">
-          <div className="section-label">Layers</div>
-          {layers.map(layer => (
-            <div key={layer.id} className="layer-row">
-              <div className="layer-header" onClick={() => toggleLayer(layer.id)}>
-                <span
-                  className="layer-swatch"
-                  style={{ background: layer.accentColor, opacity: layer.enabled ? 1 : 0.3 }}
-                />
-                <span className="layer-name">{layer.label}</span>
-                <button
-                  className={`layer-toggle ${layer.enabled ? 'on' : ''}`}
-                  onClick={e => { e.stopPropagation(); toggleLayer(layer.id); }}
-                  aria-label={`Toggle ${layer.label}`}
-                >
-                  <span className="layer-toggle-dot" />
-                </button>
-              </div>
+          {LAYER_GROUPS.map(group => (
+            <div key={group.id} className="layer-group">
+              <div className="layer-group-label">{group.label}</div>
+              {group.layers.map(groupLayer => {
+                const layer = layers.find(l => l.id === groupLayer.id) ?? groupLayer;
+                const infoOpen = expandedInfo === layer.id;
+                return (
+                  <div key={layer.id} className="layer-row">
+                    <div className="layer-header">
+                      <span
+                        className="layer-swatch"
+                        style={{ background: layer.accentColor, opacity: layer.enabled ? 1 : 0.35 }}
+                        onClick={() => toggleLayer(layer.id)}
+                      />
+                      <span
+                        className="layer-name"
+                        style={{ opacity: layer.enabled ? 1 : 0.6 }}
+                        onClick={() => toggleLayer(layer.id)}
+                      >{layer.label}</span>
+                      <button
+                        className={`layer-info-btn${infoOpen ? ' active' : ''}`}
+                        onClick={() => setExpandedInfo(infoOpen ? null : layer.id)}
+                        title="About this layer"
+                      >ⓘ</button>
+                      <button
+                        className={`layer-toggle${layer.enabled ? ' on' : ''}`}
+                        onClick={() => toggleLayer(layer.id)}
+                        aria-label={`Toggle ${layer.label}`}
+                      ><span className="layer-toggle-dot" /></button>
+                    </div>
 
-              {layer.enabled && (
-                <>
-                  <div className="layer-desc">{layer.description}</div>
-                  <div className="layer-opacity-row">
-                    <span className="layer-opacity-label">Opacity</span>
-                    <input
-                      type="range" min={0.1} max={1} step={0.05}
-                      value={layer.opacity}
-                      onChange={e => setOpacity(layer.id, parseFloat(e.target.value))}
-                      className="opacity-slider"
-                    />
-                  </div>
-                  {layer.type === 'continuous' && (
-                    <div className="layer-legend">
-                      <span className="legend-label">Low</span>
-                      <div className="legend-bar" style={{
-                        background: `linear-gradient(to right, ${layer.colorScale.join(', ')})`,
-                      }} />
-                      <span className="legend-label">High</span>
-                    </div>
-                  )}
-                  {layer.type === 'categorical' && layer.categories && (
-                    <div className="layer-categories">
-                      {Object.entries(layer.categories).slice(0, 7).map(([code, label]) => (
-                        <div key={code} className="category-row">
-                          <span className="category-dot" style={{ background: LAND_USE_COLORS[code] ?? '#ccc' }} />
-                          <span className="category-label">{label}</span>
+                    {infoOpen && (
+                      <div className="layer-info-panel">{layer.description}</div>
+                    )}
+
+                    {layer.enabled && (
+                      <div className="layer-controls">
+                        <div className="layer-opacity-row">
+                          <span className="layer-opacity-label">Opacity</span>
+                          <input
+                            type="range" min={0.1} max={1} step={0.05}
+                            value={layer.opacity}
+                            onChange={e => setOpacity(layer.id, parseFloat(e.target.value))}
+                            className="opacity-slider"
+                          />
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
+                        {layer.type === 'continuous' && (
+                          <div className="layer-legend">
+                            <span className="legend-label">Low</span>
+                            <div className="legend-bar" style={{ background: `linear-gradient(to right, ${layer.colorScale.join(', ')})` }} />
+                            <span className="legend-label">High</span>
+                          </div>
+                        )}
+                        {layer.type === 'categorical' && layer.categories && (
+                          <div className="layer-categories">
+                            {Object.entries(layer.categories).map(([code, lbl]) => (
+                              <div key={code} className="category-row">
+                                <span className="category-dot" style={{ background: LAND_USE_COLORS[code] ?? '#ccc' }} />
+                                <span className="category-label">{lbl}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -402,32 +420,25 @@ export default function App() {
                   <p className="detail-methodology-raw">Raw gravity value: <span className="detail-mono">{selectedParcel.park_gravity?.toFixed(4) ?? '—'}</span> acres/m²</p>
                   <p className="detail-methodology-src">Source: NYC Parks Open Space (2024) · NYC MapPLUTO 24v2</p>
                 </div>
+              ) : (selectedParcel.park_score ?? 0) < 0 ? (
+                <div className="detail-score-interp" style={{fontStyle:'normal', color:'var(--text-secondary)'}}>
+                  Open space parcel — not ranked
+                </div>
               ) : (
                 <>
-                  {(selectedParcel.park_score ?? 0) < 0 ? (
-                    <div className="detail-score-interp" style={{fontStyle:'normal', color:'var(--text-secondary)'}}>
-                      Open space parcel — not ranked
-                    </div>
-                  ) : (
-                    <>
-                      <div className="detail-score-value" style={{ color: scoreColor }}>
-                        {selectedParcel.park_score}
-                        <span className="detail-score-denom">/100</span>
-                      </div>
-                      <div className="detail-score-bar">
-                        <div className="detail-score-fill" style={{
-                          width: `${selectedParcel.park_score}%`,
-                          background: scoreColor,
-                        }} />
-                      </div>
-                    </>
-                  )}
+                  <div className="detail-score-value" style={{ color: scoreColor }}>
+                    {selectedParcel.park_score}
+                    <span className="detail-score-denom">/100</span>
                   </div>
-                  {(selectedParcel.park_score ?? 0) >= 0 && (
-                    <div className="detail-score-interp">
-                      Better access than {Math.round(selectedParcel.park_score)}% of NYC parcels
-                    </div>
-                  )}
+                  <div className="detail-score-bar">
+                    <div className="detail-score-fill" style={{
+                      width: `${selectedParcel.park_score}%`,
+                      background: scoreColor,
+                    }} />
+                  </div>
+                  <div className="detail-score-interp">
+                    Better access than {Math.round(selectedParcel.park_score)}% of NYC parcels
+                  </div>
                 </>
               )}
             </div>
