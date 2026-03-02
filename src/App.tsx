@@ -595,15 +595,15 @@ export default function App() {
           id: `${id}-fill`,
           type: 'fill',
           source: id,
-          paint: { 'fill-color': color, 'fill-opacity': 1 },
-          layout: { visibility: 'none' },
+          paint: { 'fill-color': color, 'fill-opacity': 0 },
+          layout: { visibility: 'visible' },  // visibility always on; opacity controls show/hide
         });
         map.addLayer({
           id: `${id}-outline`,
           type: 'line',
           source: id,
-          paint: { 'line-color': stroke, 'line-width': 0.75, 'line-opacity': 1 },
-          layout: { visibility: 'none' },
+          paint: { 'line-color': stroke, 'line-width': 0.75, 'line-opacity': 0 },
+          layout: { visibility: 'visible' },
         });
       });
 
@@ -942,23 +942,30 @@ export default function App() {
     // Layers that use fill geometry instead of circle
     const fillLayers = new Set(['polygon_park', 'open_space_polys']);
 
+    // Layers that use opacity (not layout visibility) for show/hide
+    const opacityControlled = new Set(['open_space_polys']);
+
     layers.forEach(layer => {
       const mapLayerId = layerMap[layer.id];
       if (!mapLayerId) return;
       const vis = layer.enabled ? 'visible' : 'none';
-      map.setLayoutProperty(mapLayerId, 'visibility', vis);
+      // Only set layout visibility for non-opacity-controlled layers
+      if (!opacityControlled.has(layer.id)) {
+        map.setLayoutProperty(mapLayerId, 'visibility', vis);
+      }
 
-      // Sync polygon reference layers
-      (polyRefMap[layer.id] ?? []).forEach(polyId => {
-        map.setLayoutProperty(polyId, 'visibility', vis);
+      // Sync polygon reference layers (opacity-based, always visible in layout)
+      const polyIds = polyRefMap[layer.id] ?? [];
+      polyIds.forEach(polyId => {
+        const isFill = polyId.endsWith('-fill');
+        const isLine = polyId.endsWith('-outline');
+        if (isFill) map.setPaintProperty(polyId, 'fill-opacity', layer.enabled ? 0.18 : 0);
+        if (isLine) map.setPaintProperty(polyId, 'line-opacity', layer.enabled ? 0.45 : 0);
       });
 
       if (fillLayers.has(layer.id)) {
-        // Fill layer — use fill-opacity; also sync outline opacity if present
+        // Fill layer — opacity controls show/hide (layout visibility stays 'visible')
         map.setPaintProperty(mapLayerId, 'fill-opacity', layer.enabled ? layer.opacity : 0);
-        // Sync outline layer opacity (outline id = fill id with -fill → -outline)
-        const outlineId = mapLayerId.replace('-fill', '-outline');
-        try { map.setPaintProperty(outlineId, 'line-opacity', layer.enabled ? 0.6 : 0); } catch { /* outline may not exist */ }
       } else {
         // Circle layer — set color + opacity
         const color = colorMap[layer.id];
