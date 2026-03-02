@@ -228,36 +228,201 @@ def compute_scores(parcels, lats, lngs, acrs, grid):
 
 
 # ──────────────────────────────────────────────────
+# School zone spatial join
+# ──────────────────────────────────────────────────
+
+def point_in_polygon(lat, lng, ring_coords):
+    """Ray-casting point-in-polygon for a single ring (lng, lat pairs)."""
+    inside = False
+    j = len(ring_coords) - 1
+    for i in range(len(ring_coords)):
+        xi, yi = ring_coords[i][0], ring_coords[i][1]
+        xj, yj = ring_coords[j][0], ring_coords[j][1]
+        if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi + 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+def build_zone_index(zone_geojson):
+    """Build list of (bbox, ring_coords, properties) for fast lookup."""
+    zones = []
+    for feat in zone_geojson.get("features", []):
+        props = feat.get("properties", {})
+        geom = feat.get("geometry", {})
+        if not geom: continue
+        # Collect all rings from polygon/multipolygon
+        rings = []
+        if geom["type"] == "Polygon":
+            rings = [geom["coordinates"][0]]
+        elif geom["type"] == "MultiPolygon":
+            rings = [poly[0] for poly in geom["coordinates"]]
+        for ring in rings:
+            if len(ring) < 3: continue
+            lngs = [c[0] for c in ring]
+            lats = [c[1] for c in ring]
+            bbox = (min(lats), max(lats), min(lngs), max(lngs))
+            zones.append((bbox, ring, props))
+    print(f"  {len(zones)} zone rings indexed", flush=True)
+    return zones
+
+def join_school_zones(parcels):
+    """For each parcel, find its elementary school zone and attach score fields."""
+    print("[school] Loading school zone GeoJSONs…", flush=True)
+    zone_files = {
+        "elementary": PROC_DIR / "school_zones_elementary.geojson",
+        "middle":     PROC_DIR / "school_zones_middle.geojson",
+        "high":       PROC_DIR / "school_zones_high.geojson",
+    }
+    zone_indexes = {}
+    for key, path in zone_files.items():
+        if not path.exists():
+            print(f"  WARNING: {path} not found — skipping {key}", flush=True)
+            continue
+        gj = json.loads(path.read_text())
+        print(f"  Indexing {key}…", flush=True)
+        zone_indexes[key] = build_zone_index(gj)
+
+    if not zone_indexes:
+        print("[school] No zone files found — skipping join", flush=True)
+        return [{}] * len(parcels)
+
+    print(f"[school] Joining {len(parcels):,} parcels to school zones…", flush=True)
+    results = []
+    report_every = max(1, len(parcels) // 20)
+
+    for i, p in enumerate(parcels):
+        if i % report_every == 0:
+            pct = 100 * i // len(parcels)
+            print(f"  {i:,}/{len(parcels):,} ({pct}%)", flush=True)
+
+        try:
+            plat = float(p["latitude"])
+            plng = float(p["longitude"])
+        except (KeyError, ValueError, TypeError):
+            results.append({})
+            continue
+
+        row = {}
+        for key, zones in zone_indexes.items():
+            for bbox, ring, props in zones:
+                minlat, maxlat, minlng, maxlng = bbox
+                if not (minlat <= plat <= maxlat and minlng <= plng <= maxlng):
+                    continue
+                if point_in_polygon(plat, plng, ring):
+                    prefix = key[:2]  # "el", "mi", "hi"
+                    row[f"{prefix}_ela_pct"]   = props.get("ela_percentile")
+                    row[f"{prefix}_math_pct"]  = props.get("math_percentile")
+                    row[f"{prefix}_ela_score"] = props.get("ela_score")
+                    row[f"{prefix}_dbn"]       = props.get("dbn", "")
+                    row[f"{prefix}_school"]    = props.get("school_name", "")
+                    break
+
+        results.append(row)
+
+    matched = sum(1 for r in results if r)
+    print(f"[school] Matched {matched:,} of {len(parcels):,} parcels", flush=True)
+    return results
+
+
+# ──────────────────────────────────────────────────
+# Percentile rank helpers
+# ──────────────────────────────────────────────────
+
+def percentile_rank_array(values, exclude_zeros=False):
+    """Compute 0–100 percentile rank for a list of floats.
+    Returns list same length as values; None inputs get -1."""
+    arr = np.array([v if v is not None else float('nan') for v in values], dtype=np.float64)
+    valid = ~np.isnan(arr)
+    if exclude_zeros:
+        valid = valid & (arr > 0)
+    sub = arr[valid]
+    n = len(sub)
+    if n == 0:
+        return [-1.0] * len(values)
+    order = np.argsort(sub)
+    ranks = np.empty(n, dtype=np.float64)
+    ranks[order] = np.arange(n, dtype=np.float64)
+    prank = np.round(ranks / max(n - 1, 1) * 100, 1)
+    result = np.full(len(values), -1.0)
+    result[valid] = prank
+    return result.tolist()
+
+
+# ──────────────────────────────────────────────────
 # Export
 # ──────────────────────────────────────────────────
-def export_geojson(parcels, park_scores, park_scores_raw=None):
+def export_geojson(parcels, park_scores, park_scores_raw=None, school_join=None):
+    print(f"[export] Computing overlay percentile ranks…", flush=True)
+
+    # Pre-compute percentile ranks for all overlay-eligible continuous fields
+    floors_vals  = [float(p["numfloors"]) if p.get("numfloors") else 0 for p in parcels]
+    year_vals    = [int(p["yearbuilt"]) if p.get("yearbuilt") else 0 for p in parcels]
+    density_vals = [
+        (int(p["unitsres"]) * 1000 / max(float(p["lotarea"]), 1))
+        if p.get("unitsres") and p.get("lotarea") else 0
+        for p in parcels
+    ]
+
+    floors_pct  = percentile_rank_array(floors_vals,  exclude_zeros=True)
+    year_pct    = percentile_rank_array(year_vals,    exclude_zeros=True)
+    density_pct = percentile_rank_array(density_vals, exclude_zeros=True)
+
     print(f"[export] Writing GeoJSON…", flush=True)
     features = []
     raw_iter = iter(park_scores_raw) if park_scores_raw else None
-    for p, score in zip(parcels, park_scores):
+    sj = school_join or [{}] * len(parcels)
+
+    for idx, (p, score) in enumerate(zip(parcels, park_scores)):
         try:
             lat = float(p["latitude"])
             lng = float(p["longitude"])
         except (KeyError, ValueError, TypeError):
             continue
+
+        sz = sj[idx] if idx < len(sj) else {}
+
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [lng, lat]},
             "properties": {
+                # ── Identity ──
                 "bbl":        str(p.get("bbl","")).split(".")[0],
                 "address":    p.get("address",""),
                 "borough":    BOROUGH_NAMES.get(p.get("borough",""), p.get("borough","")),
-                "numfloors":  float(p["numfloors"]) if p.get("numfloors") else 0,
-                "landuse":    p.get("landuse","").zfill(2),
                 "zonedist1":  p.get("zonedist1",""),
+                "bldgclass":  p.get("bldgclass",""),
+                "landuse":    p.get("landuse","").zfill(2),
+                # ── Raw values ──
+                "numfloors":  float(p["numfloors"]) if p.get("numfloors") else 0,
                 "lotarea":    float(p["lotarea"]) if p.get("lotarea") else 0,
                 "yearbuilt":  int(p["yearbuilt"]) if p.get("yearbuilt") else 0,
                 "unitsres":   int(p["unitsres"]) if p.get("unitsres") else 0,
-                "bldgclass":  p.get("bldgclass",""),
-                "park_score": round(score, 1),
+                # ── Park access ──
+                "park_score":   round(score, 1),
                 "park_gravity": round(next(raw_iter), 6) if raw_iter else 0,
+                # ── Percentile ranks (0–100, –1 = excluded/no data) ──
+                "floors_pct":   round(floors_pct[idx], 1),
+                "year_pct":     round(year_pct[idx], 1),
+                "density_pct":  round(density_pct[idx], 1),
+                # ── School zone join (elementary) ──
+                "el_ela_pct":   sz.get("el_ela_pct"),
+                "el_math_pct":  sz.get("el_math_pct"),
+                "el_ela_score": sz.get("el_ela_score"),
+                "el_dbn":       sz.get("el_dbn", ""),
+                "el_school":    sz.get("el_school", ""),
+                # ── School zone join (middle) ──
+                "mi_ela_pct":   sz.get("mi_ela_pct"),
+                "mi_math_pct":  sz.get("mi_math_pct"),
+                "mi_ela_score": sz.get("mi_ela_score"),
+                "mi_dbn":       sz.get("mi_dbn", ""),
+                # ── School zone join (high) ──
+                "hi_ela_pct":   sz.get("hi_ela_pct"),
+                "hi_math_pct":  sz.get("hi_math_pct"),
+                "hi_ela_score": sz.get("hi_ela_score"),
+                "hi_dbn":       sz.get("hi_dbn", ""),
             }
         })
+
     fc = {"type": "FeatureCollection", "features": features}
     OUTPUT_GEOJSON.write_text(json.dumps(fc))
     print(f"[export] {OUTPUT_GEOJSON} ({OUTPUT_GEOJSON.stat().st_size/1e6:.1f} MB)", flush=True)
@@ -288,7 +453,8 @@ if __name__ == "__main__":
     lats, lngs, acrs = build_park_samples(parks_raw)
     grid      = build_grid_index(lats, lngs)
     scores, raw_scores = compute_scores(parcels, lats, lngs, acrs, grid)
-    export_geojson(parcels, scores, raw_scores)
+    school_join = join_school_zones(parcels)
+    export_geojson(parcels, scores, raw_scores, school_join)
     build_pmtiles()
 
     # Notify completion

@@ -4,3 +4,9 @@ data/raw/
 data/processed/
 *.pmtiles
 *.log
+
+# Large data files — hosted externally
+public/data/parcels.pmtiles
+
+# Keep school zone GeoJSONs (small enough for git)
+# public/data/school_zones_*.geojson — committed directly
