@@ -50,7 +50,7 @@ export const LAYER_GROUPS: LayerGroup[] = [
         type: 'continuous',
         colorScale: ['#F0EDE6', '#A8CCA8', '#4A8A4A', '#2D6E2D'],
         accentColor: '#4A8A4A',
-        enabled: true,
+        enabled: false,
         opacity: 0.75,
       },
       {
