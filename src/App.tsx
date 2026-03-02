@@ -903,14 +903,15 @@ export default function App() {
     const map = mapInstance.current;
 
     const layerMap: Record<string, string> = {
-      park_score:   'parcels-park-score',
-      flood_100yr:  'parcels-flood-100yr',
-      flood_storm:  'parcels-flood-storm',
-      numfloors:    'parcels-height',
-      density:      'parcels-density',
-      yearbuilt:    'parcels-yearbuilt',
-      landuse:      'parcels-landuse',
-      polygon_park: 'parcels-polygon-park',
+      park_score:       'parcels-park-score',
+      flood_100yr:      'parcels-flood-100yr',
+      flood_storm:      'parcels-flood-storm',
+      numfloors:        'parcels-height',
+      density:          'parcels-density',
+      yearbuilt:        'parcels-yearbuilt',
+      landuse:          'parcels-landuse',
+      polygon_park:     'parcels-polygon-park',
+      open_space_polys: 'open-space-poly-fill',  // primary layer; outline synced via polyRefMap
     };
 
     const colorMap: Record<string, unknown> = {
@@ -921,7 +922,8 @@ export default function App() {
       density:      DENSITY_COLOR,
       yearbuilt:    YEARBUILT_COLOR,
       landuse:      buildLandUseExpression(),
-      polygon_park: null, // polygon layer uses fill-color, not circle-color
+      polygon_park:     null, // polygon layer uses fill-color, not circle-color
+      open_space_polys: null, // fill layer — color set at init, opacity controlled only
     };
 
     // Binary layers use per-feature opacity expressions; others use uniform opacity
@@ -932,13 +934,13 @@ export default function App() {
 
     // Polygon reference layers — show/hide with their parent layer
     const polyRefMap: Record<string, string[]> = {
-      flood_100yr: ['flood-poly-100yr-fill', 'flood-poly-100yr-outline'],
-      flood_storm: ['flood-poly-storm-fill', 'flood-poly-storm-outline'],
-      park_score:  ['open-space-poly-fill',  'open-space-poly-outline'],
+      flood_100yr:      ['flood-poly-100yr-fill', 'flood-poly-100yr-outline'],
+      flood_storm:      ['flood-poly-storm-fill', 'flood-poly-storm-outline'],
+      open_space_polys: ['open-space-poly-fill',  'open-space-poly-outline'],
     };
 
     // Layers that use fill geometry instead of circle
-    const fillLayers = new Set(['polygon_park']);
+    const fillLayers = new Set(['polygon_park', 'open_space_polys']);
 
     layers.forEach(layer => {
       const mapLayerId = layerMap[layer.id];
@@ -952,8 +954,11 @@ export default function App() {
       });
 
       if (fillLayers.has(layer.id)) {
-        // Fill layer — use fill-opacity
-        map.setPaintProperty(mapLayerId, 'fill-opacity', layer.opacity);
+        // Fill layer — use fill-opacity; also sync outline opacity if present
+        map.setPaintProperty(mapLayerId, 'fill-opacity', layer.enabled ? layer.opacity : 0);
+        // Sync outline layer opacity (outline id = fill id with -fill → -outline)
+        const outlineId = mapLayerId.replace('-fill', '-outline');
+        try { map.setPaintProperty(outlineId, 'line-opacity', layer.enabled ? 0.6 : 0); } catch { /* outline may not exist */ }
       } else {
         // Circle layer — set color + opacity
         const color = colorMap[layer.id];

@@ -56,6 +56,23 @@ export const LAYER_GROUPS: LayerGroup[] = [
         opacity: 0.75,
       },
       {
+        id: 'open_space_polys',
+        label: 'Open Space Boundaries',
+        description: 'Park and open space polygon boundaries from NYC Parks Dept + state/regional parks (Gantry, Gateway, etc.).',
+        info: {
+          what: 'The actual polygon footprints of NYC parks, playgrounds, green spaces, and state/regional parks within the five boroughs.',
+          how: 'Polygon boundaries for 2,058 NYC Parks-managed open spaces, plus 8 major state and regional parks (Gantry Plaza State Park, Gateway National Recreation Area, Jamaica Bay Wildlife Refuge, Shirley Chisholm State Park, and others) sourced from OpenStreetMap. Displayed as a semi-transparent green fill with boundary outline.',
+          source: 'NYC Parks Dept. Open Space GIS (2024), NYC Open Data. State/regional parks: OpenStreetMap contributors (ODbL).',
+          caveats: 'Does not include all state parks — only major ones within or adjacent to the five boroughs. Hudson River Park Trust and some smaller managed areas may be missing.',
+        },
+        property: 'park_score' as keyof import('./types').ParcelProperties,
+        type: 'binary',
+        colorScale: ['#F0EDE6', '#4A8A4A'],
+        accentColor: '#4A8A4A',
+        enabled: false,
+        opacity: 0.7,
+      },
+      {
         id: 'flood_100yr',
         label: '100-Year Floodplain',
         description: 'FEMA 1% annual chance flood zone. Parcels inside face a 26% cumulative flood probability over a 30-year mortgage.',
