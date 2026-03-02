@@ -27,7 +27,7 @@ const map = new maplibregl.Map({
 });
 
 map.on('load', () => {
-  map.addSource('parks', { type: 'geojson', data: '/data/open_spaces.geojson?v=8' });
+  map.addSource('parks', { type: 'geojson', data: '/data/open_spaces.geojson?v=9' });
   map.addLayer({ id: 'parks-fill', type: 'fill', source: 'parks', paint: { 'fill-color': 'rgba(74,138,74,0.4)', 'fill-opacity': 1 }});
   map.addLayer({ id: 'parks-outline', type: 'line', source: 'parks', paint: { 'line-color': 'rgba(74,138,74,0.9)', 'line-width': 1.5 }});
   
