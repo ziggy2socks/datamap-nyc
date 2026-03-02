@@ -145,17 +145,11 @@ const YEARBUILT_COLOR = [
   2020, 'rgb(240,237,230)',
 ];
 
-const FLOOD_100YR_COLOR = [
-  'case',
-  ['==', ['get', 'flood_100yr'], 1], 'rgb(74,122,176)',
-  'rgba(0,0,0,0)',
-];
+const FLOOD_100YR_COLOR = 'rgb(74,122,176)';
+const FLOOD_100YR_OPACITY = ['case', ['==', ['get', 'flood_100yr'], 1], 0.75, 0] as unknown as number;
 
-const FLOOD_STORM_COLOR = [
-  'case',
-  ['==', ['get', 'flood_storm'], 1], 'rgb(122,74,176)',
-  'rgba(0,0,0,0)',
-];
+const FLOOD_STORM_COLOR = 'rgb(122,74,176)';
+const FLOOD_STORM_OPACITY = ['case', ['==', ['get', 'flood_storm'], 1], 0.75, 0] as unknown as number;
 
 function buildLandUseExpression() {
   const cases: unknown[] = ['match', ['get', 'landuse']];
@@ -839,12 +833,21 @@ export default function App() {
       landuse:     buildLandUseExpression(),
     };
 
+    // Binary layers use per-feature opacity expressions; others use uniform opacity
+    const opacityMap: Record<string, unknown> = {
+      flood_100yr: FLOOD_100YR_OPACITY,
+      flood_storm: FLOOD_STORM_OPACITY,
+    };
+
     layers.forEach(layer => {
       const mapLayerId = layerMap[layer.id];
       if (!mapLayerId) return;
       map.setLayoutProperty(mapLayerId, 'visibility', layer.enabled ? 'visible' : 'none');
       map.setPaintProperty(mapLayerId, 'circle-color', colorMap[layer.id] as maplibregl.DataDrivenPropertyValueSpecification<string>);
-      map.setPaintProperty(mapLayerId, 'circle-opacity', layer.opacity);
+      const opacityExpr = opacityMap[layer.id];
+      map.setPaintProperty(mapLayerId, 'circle-opacity',
+        opacityExpr !== undefined ? opacityExpr : layer.opacity
+      );
     });
   }, [layers, mapLoaded]);
 
