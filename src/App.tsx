@@ -578,6 +578,31 @@ export default function App() {
       const imgData = ctx.getImageData(0, 0, SZ, SZ);
       map.addImage('hatch-nodata', { width: SZ, height: SZ, data: imgData.data as unknown as Uint8Array });
 
+      // ── Flood polygon reference layers ──────────────────────
+      // Semi-transparent fills showing the raw source geometry (FEMA / NYC DEP polygons)
+      // These sit BELOW parcel dots — parcel dots remain clickable on top
+      [
+        { id: 'flood-poly-100yr',  url: '/data/flood_100yr.geojson',   color: 'rgba(74,122,176,0.18)',  stroke: 'rgba(74,122,176,0.45)' },
+        { id: 'flood-poly-storm',  url: '/data/flood_moderate.geojson', color: 'rgba(122,74,176,0.18)', stroke: 'rgba(122,74,176,0.45)' },
+        { id: 'open-space-poly',   url: '/data/open_spaces.geojson',   color: 'rgba(74,138,74,0.18)',  stroke: 'rgba(74,138,74,0.40)' },
+      ].forEach(({ id, url, color, stroke }) => {
+        map.addSource(id, { type: 'geojson', data: url });
+        map.addLayer({
+          id: `${id}-fill`,
+          type: 'fill',
+          source: id,
+          paint: { 'fill-color': color, 'fill-opacity': 1 },
+          layout: { visibility: 'none' },
+        });
+        map.addLayer({
+          id: `${id}-outline`,
+          type: 'line',
+          source: id,
+          paint: { 'line-color': stroke, 'line-width': 0.75, 'line-opacity': 1 },
+          layout: { visibility: 'none' },
+        });
+      });
+
       // School zone GeoJSON sources (added before parcels so parcels render on top)
       const ZONE_TYPES: ZoneType[] = ['elementary', 'middle', 'high'];
       ZONE_TYPES.forEach(zt => {
@@ -867,11 +892,24 @@ export default function App() {
       flood_storm: FLOOD_STORM_OPACITY,
     };
 
+    // Polygon reference layers — show/hide with their parent layer
+    const polyRefMap: Record<string, string[]> = {
+      flood_100yr: ['flood-poly-100yr-fill', 'flood-poly-100yr-outline'],
+      flood_storm: ['flood-poly-storm-fill', 'flood-poly-storm-outline'],
+      park_score:  ['open-space-poly-fill',  'open-space-poly-outline'],
+    };
+
     layers.forEach(layer => {
       const mapLayerId = layerMap[layer.id];
       if (!mapLayerId) return;
-      map.setLayoutProperty(mapLayerId, 'visibility', layer.enabled ? 'visible' : 'none');
+      const vis = layer.enabled ? 'visible' : 'none';
+      map.setLayoutProperty(mapLayerId, 'visibility', vis);
       map.setPaintProperty(mapLayerId, 'circle-color', colorMap[layer.id] as maplibregl.DataDrivenPropertyValueSpecification<string>);
+
+      // Sync polygon reference layers
+      (polyRefMap[layer.id] ?? []).forEach(polyId => {
+        map.setLayoutProperty(polyId, 'visibility', vis);
+      });
       const opacityExpr = opacityMap[layer.id];
       map.setPaintProperty(mapLayerId, 'circle-opacity',
         opacityExpr !== undefined ? opacityExpr : layer.opacity
