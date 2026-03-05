@@ -583,6 +583,7 @@ export default function App() {
       map.addImage('hatch-nodata', { width: SZ, height: SZ, data: imgData.data as unknown as Uint8Array });
 
       // ── Raster tile layer (park score heatmap, z8–z13) ─────
+      // Sits below parcel dot/polygon layers; fades out at z14 where polygons take over
       map.addSource('raster-park-score', {
         type: 'raster',
         tiles: ['/raster/park_score/{z}/{x}/{y}.png'],
@@ -594,9 +595,10 @@ export default function App() {
         id: 'raster-park-score',
         type: 'raster',
         source: 'raster-park-score',
+        maxzoom: 15,
         paint: {
-          'raster-opacity': 0,          // hidden by default; toggle in dev
-          'raster-fade-duration': 300,
+          'raster-opacity': 0,           // hidden by default; set via setPaintProperty when toggled
+          'raster-fade-duration': 400,
         },
       });
 
@@ -928,9 +930,31 @@ export default function App() {
       density:          'parcels-density',
       yearbuilt:        'parcels-yearbuilt',
       landuse:          'parcels-landuse',
-      polygon_park:     'parcels-polygon-park',
       open_space_polys: 'open-space-poly-fill',  // primary layer; outline synced via polyRefMap
     };
+
+    // Raster layer — zoom-aware opacity crossfade with polygon layer
+    // z8–z13: raster visible; z14+: polygon takes over
+    const parkLayer = layers.find(l => l.id === 'park_score');
+    if (parkLayer) {
+      const rasterOpacity = parkLayer.enabled
+        ? ['interpolate', ['linear'], ['zoom'],
+            12, parkLayer.opacity,
+            14, 0,
+          ]
+        : 0;
+      map.setPaintProperty('raster-park-score', 'raster-opacity', rasterOpacity);
+
+      // Polygon layer: fade IN at z13, full at z14
+      const polyOpacity = parkLayer.enabled
+        ? ['interpolate', ['linear'], ['zoom'],
+            13, 0,
+            14, parkLayer.opacity,
+          ]
+        : 0;
+      map.setPaintProperty('parcels-polygon-park', 'fill-opacity', polyOpacity);
+      map.setLayoutProperty('parcels-polygon-park', 'visibility', parkLayer.enabled ? 'visible' : 'none');
+    }
 
     const colorMap: Record<string, unknown> = {
       park_score:   PARK_SCORE_COLOR,
@@ -940,7 +964,6 @@ export default function App() {
       density:      DENSITY_COLOR,
       yearbuilt:    YEARBUILT_COLOR,
       landuse:      buildLandUseExpression(),
-      polygon_park:     null, // polygon layer uses fill-color, not circle-color
       open_space_polys: null, // fill layer — color set at init, opacity controlled only
     };
 
@@ -958,7 +981,8 @@ export default function App() {
     };
 
     // Layers that use fill geometry instead of circle
-    const fillLayers = new Set(['polygon_park', 'open_space_polys']);
+    // polygon_park is handled by the raster/polygon crossfade above (not here)
+    const fillLayers = new Set(['open_space_polys']);
 
     // Layers that use opacity (not layout visibility) for show/hide
     const opacityControlled = new Set(['open_space_polys']);
@@ -991,9 +1015,11 @@ export default function App() {
           map.setPaintProperty(mapLayerId, 'circle-color', color as maplibregl.DataDrivenPropertyValueSpecification<string>);
         }
         const opacityExpr = opacityMap[layer.id];
-        map.setPaintProperty(mapLayerId, 'circle-opacity',
-          opacityExpr !== undefined ? opacityExpr : layer.opacity
-        );
+        // park_score dots fade out below z14 (raster takes over there)
+        const dotOpacity = (layer.id === 'park_score' && layer.enabled)
+          ? ['interpolate', ['linear'], ['zoom'], 13, 0, 14.5, layer.opacity]
+          : (opacityExpr !== undefined ? opacityExpr : layer.opacity);
+        map.setPaintProperty(mapLayerId, 'circle-opacity', dotOpacity);
       }
     });
   }, [layers, mapLoaded]);
