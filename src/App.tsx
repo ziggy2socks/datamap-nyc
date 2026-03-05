@@ -617,7 +617,7 @@ export default function App() {
       [
         { id: 'flood-poly-100yr',  url: '/data/flood_100yr.geojson',   color: 'rgba(74,122,176,0.18)',  stroke: 'rgba(74,122,176,0.45)' },
         { id: 'flood-poly-storm',  url: '/data/flood_moderate.geojson', color: 'rgba(122,74,176,0.18)', stroke: 'rgba(122,74,176,0.45)' },
-        { id: 'open-space-poly',   url: '/data/open_spaces.geojson?v=11',   color: 'rgba(74,138,74,0.18)',  stroke: 'rgba(74,138,74,0.40)' },
+        { id: 'open-space-poly',   url: '/data/open_spaces.geojson?v=12',   color: 'rgba(74,138,74,0.18)',  stroke: 'rgba(74,138,74,0.40)' },
       ].forEach(({ id, url, color, stroke }) => {
         map.addSource(id, { type: 'geojson', data: url });
         map.addLayer({
