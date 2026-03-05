@@ -99,15 +99,18 @@ def make_colormap(stops):
                     break
     return lut
 
-# Diverging terra cotta → warm gray → forest green (park access)
+# ColorBrewer YlGn 9 — sequential pale yellow → dark forest green
+# Alpha: low scores semi-transparent (let basemap show through), high scores more opaque
 LUT_PARK = make_colormap([
-    (0.00, (180,  80,  40, 210)),
-    (0.20, (210, 140,  70, 190)),
-    (0.40, (225, 200, 155, 150)),
-    (0.50, (190, 185, 175, 110)),
-    (0.60, (150, 185, 140, 150)),
-    (0.80, ( 70, 150,  80, 190)),
-    (1.00, ( 28,  96,  46, 210)),
+    (0.00, (255, 255, 229, 140)),   # #ffffe5 — very light, nearly transparent
+    (0.12, (247, 252, 185, 160)),   # #f7fcb9
+    (0.25, (217, 240, 163, 175)),   # #d9f0a3
+    (0.37, (173, 221, 142, 190)),   # #addd8e
+    (0.50, (120, 198, 121, 200)),   # #78c679
+    (0.62, ( 65, 171,  93, 210)),   # #41ab5d
+    (0.75, ( 35, 139,  69, 215)),   # #238b45
+    (0.87, (  0, 109,  44, 220)),   # #006d2c
+    (1.00, (  0,  68,  27, 225)),   # #004d1b — deep forest, most opaque
 ])
 
 # Sequential cool slate (building height)

@@ -23,7 +23,7 @@ maplibregl.addProtocol('pmtiles', protocol.tile);
 
 // ── Overlay breakdown colors (matching OverlayPanel.tsx FIELD_COLORS) ────────
 const BREAKDOWN_COLORS = {
-  park_score:  '#4A8A4A',
+  park_score:  '#238b45',
   el_ela_pct:  '#7AB87A',
   floors_pct:  '#4A7AAA',
   year_pct:    '#A08040',
@@ -106,16 +106,25 @@ function getYearBuiltColor(year: number): string {
 
 // ── MapLibre expressions ──────────────────────────────────────
 
+// ColorBrewer YlGn 9 — sequential pale yellow → dark forest green
+const YLGN9 = [
+  [0,   'rgb(255,255,229)'],  // #ffffe5
+  [12,  'rgb(247,252,185)'],  // #f7fcb9
+  [25,  'rgb(217,240,163)'],  // #d9f0a3
+  [37,  'rgb(173,221,142)'],  // #addd8e
+  [50,  'rgb(120,198,121)'],  // #78c679
+  [62,  'rgb(65,171,93)'],    // #41ab5d
+  [75,  'rgb(35,139,69)'],    // #238b45
+  [87,  'rgb(0,109,44)'],     // #006d2c
+  [100, 'rgb(0,68,27)'],      // #004d1b
+];
+
 const PARK_SCORE_COLOR = [
   'case',
   ['<', ['get', 'park_score'], 0], 'rgba(0,0,0,0)',
   [
     'interpolate', ['linear'], ['get', 'park_score'],
-    0,   'rgb(240,237,230)',
-    20,  'rgb(190,220,190)',
-    50,  'rgb(120,180,120)',
-    80,  'rgb(74,138,74)',
-    100, 'rgb(45,110,45)',
+    ...YLGN9.flat(),
   ],
 ];
 
@@ -710,15 +719,19 @@ export default function App() {
             'case',
             ['<', ['get', 'park_score'], 0], 'rgba(0,0,0,0)',
             ['interpolate', ['linear'], ['get', 'park_score'],
-              0,   '#F0EDE6',
-              25,  '#C8DDB8',
-              50,  '#8DC07A',
-              75,  '#4A8A4A',
-              100, '#2D6E2D',
+              0,   '#ffffe5',
+              12,  '#f7fcb9',
+              25,  '#d9f0a3',
+              37,  '#addd8e',
+              50,  '#78c679',
+              62,  '#41ab5d',
+              75,  '#238b45',
+              87,  '#006d2c',
+              100, '#004d1b',
             ],
           ],
           'fill-opacity': 0.85,
-          'fill-outline-color': 'rgba(60,80,60,0.25)',
+          'fill-outline-color': 'rgba(0,77,27,0.15)',
         },
         layout: { visibility: 'none' },
       });
