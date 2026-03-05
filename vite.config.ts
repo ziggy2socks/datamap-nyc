@@ -12,6 +12,16 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/geocode/, '/v2/autocomplete'),
       },
+      '/api/permits': {
+        target: 'https://data.cityofnewyork.us/resource',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/permits/, '/rbx6-tga4.json'),
+      },
+      '/api/jobs': {
+        target: 'https://data.cityofnewyork.us/resource',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/jobs/, '/w9ak-ipjd.json'),
+      },
     },
   },
   optimizeDeps: {

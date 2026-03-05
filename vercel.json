@@ -2,6 +2,12 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "rewrites": [
+    { "source": "/api/permits/:path*", "destination": "https://data.cityofnewyork.us/resource/rbx6-tga4.json/:path*" },
+    { "source": "/api/jobs/:path*",    "destination": "https://data.cityofnewyork.us/resource/w9ak-ipjd.json/:path*" },
+    { "source": "/permits",            "destination": "/index.html" },
+    { "source": "/(.*)",               "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/data/(.*)",
