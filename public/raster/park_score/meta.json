@@ -1,0 +1,13 @@
+{
+  "layer": "park_score",
+  "label": "Park Access",
+  "minZoom": 8,
+  "maxZoom": 13,
+  "bounds": [
+    -74.26,
+    40.47,
+    -73.7,
+    40.93
+  ],
+  "tileUrl": "/raster/park_score/{z}/{x}/{y}.png"
+}

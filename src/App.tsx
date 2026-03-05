@@ -582,6 +582,24 @@ export default function App() {
       const imgData = ctx.getImageData(0, 0, SZ, SZ);
       map.addImage('hatch-nodata', { width: SZ, height: SZ, data: imgData.data as unknown as Uint8Array });
 
+      // ── Raster tile layer (park score heatmap, z8–z13) ─────
+      map.addSource('raster-park-score', {
+        type: 'raster',
+        tiles: ['/raster/park_score/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        minzoom: 8,
+        maxzoom: 13,
+      });
+      map.addLayer({
+        id: 'raster-park-score',
+        type: 'raster',
+        source: 'raster-park-score',
+        paint: {
+          'raster-opacity': 0,          // hidden by default; toggle in dev
+          'raster-fade-duration': 300,
+        },
+      });
+
       // ── Flood polygon reference layers ──────────────────────
       // Semi-transparent fills showing the raw source geometry (FEMA / NYC DEP polygons)
       // These sit BELOW parcel dots — parcel dots remain clickable on top
