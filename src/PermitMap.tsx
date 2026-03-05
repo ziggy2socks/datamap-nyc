@@ -23,19 +23,19 @@ const MAP_STYLE = {
   sources: {
     carto: {
       type: 'raster' as const,
-      tiles: ['https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}@2x.png'],
+      tiles: ['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png'],
       tileSize: 256,
       attribution: '© OpenStreetMap © CartoDB',
     },
     carto_labels: {
       type: 'raster' as const,
-      tiles: ['https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png'],
+      tiles: ['https://a.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png'],
       tileSize: 256,
     },
   },
   layers: [
     { id: 'carto-base', type: 'raster' as const, source: 'carto', paint: { 'raster-opacity': 1 } },
-    { id: 'carto-labels', type: 'raster' as const, source: 'carto_labels', paint: { 'raster-opacity': 0.85 } },
+    { id: 'carto-labels', type: 'raster' as const, source: 'carto_labels', paint: { 'raster-opacity': 0.6 } },
   ],
 };
 
@@ -462,12 +462,12 @@ function DetailRow({ label, value, mono }: { label: string; value?: string; mono
 function buildPopupHTML(p: Permit): string {
   const color = getJobColor(p.job_type ?? '');
   return `
-    <div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.5;min-width:200px">
-      <div style="font-weight:600;color:${color};margin-bottom:4px">${getJobLabel(p.job_type ?? '')}</div>
-      <div style="font-weight:500;margin-bottom:2px">${formatAddress(p)}</div>
-      <div style="color:#888;font-size:11px;margin-bottom:6px">${formatDate(p.issued_date)}</div>
-      ${p.job_description ? `<div style="font-size:11px;color:#444;margin-bottom:4px">${p.job_description.slice(0, 120)}${p.job_description.length > 120 ? '…' : ''}</div>` : ''}
-      ${p.estimated_job_costs && parseFloat(p.estimated_job_costs) > 0 ? `<div style="font-size:11px;color:#444">$${parseInt(p.estimated_job_costs).toLocaleString()}</div>` : ''}
+    <div style="font-family:'Courier New',monospace;font-size:11px;line-height:1.5;min-width:200px;color:#e0e8ff">
+      <div style="font-weight:bold;color:${color};margin-bottom:4px;letter-spacing:1px;text-shadow:0 0 8px ${color}">${getJobLabel(p.job_type ?? '').toUpperCase()}</div>
+      <div style="font-weight:bold;margin-bottom:2px;letter-spacing:0.3px">${formatAddress(p)}</div>
+      <div style="color:#556688;font-size:10px;margin-bottom:6px;letter-spacing:1px">${formatDate(p.issued_date)}</div>
+      ${p.job_description ? `<div style="font-size:10px;color:#8899aa;margin-bottom:4px">${p.job_description.slice(0, 120)}${p.job_description.length > 120 ? '…' : ''}</div>` : ''}
+      ${p.estimated_job_costs && parseFloat(p.estimated_job_costs) > 0 ? `<div style="font-size:10px;color:#556688;letter-spacing:0.5px">$${parseInt(p.estimated_job_costs).toLocaleString()}</div>` : ''}
     </div>
   `;
 }
