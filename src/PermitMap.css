@@ -414,3 +414,117 @@
   box-shadow: 0 2px 12px rgba(0,0,0,0.12) !important;
   border: 1px solid #E5E1DB !important;
 }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+
+.permit-mobile-toggle {
+  display: none; /* hidden on desktop */
+}
+
+@media (max-width: 768px) {
+  .permit-app {
+    flex-direction: column;
+  }
+
+  /* Map takes full screen */
+  .permit-map-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  /* Sidebar slides up from bottom as a sheet */
+  .permit-sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 70vh;
+    border-right: none;
+    border-top: 1px solid #E5E1DB;
+    border-radius: 14px 14px 0 0;
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 20;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.10);
+  }
+
+  .permit-sidebar--open {
+    transform: translateY(0);
+  }
+
+  /* Pull handle at top of sheet */
+  .permit-sidebar-header::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: #D8D4CE;
+    border-radius: 2px;
+    margin: 0 auto 10px;
+  }
+
+  /* Mobile fab toggle button */
+  .permit-mobile-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    background: #1A1814;
+    color: #fff;
+    border: none;
+    border-radius: 24px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Inter', system-ui, sans-serif;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  /* Hide toggle when sidebar is open (✕ shown inline) */
+  .permit-mobile-toggle:has(+ .permit-sidebar--open) {
+    bottom: calc(70vh + 16px);
+  }
+
+  .permit-mobile-count {
+    background: rgba(255,255,255,0.2);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* Detail panel — slides up from bottom over map */
+  .permit-detail {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 50vh;
+    border-left: none;
+    border-top: 1px solid #E5E1DB;
+    border-radius: 14px 14px 0 0;
+    z-index: 25;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.10);
+  }
+
+  /* Legend — move to top-left on mobile (bottom is crowded) */
+  .permit-legend {
+    top: 12px;
+    bottom: auto;
+    left: 12px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    max-width: calc(100vw - 24px);
+  }
+}

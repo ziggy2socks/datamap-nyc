@@ -15,7 +15,7 @@ import {
   getJobColor,
 } from './permit-data';
 
-const RESULT_LIMIT = 2000;
+const RESULT_LIMIT = 2500;
 
 const MAP_STYLE = {
   version: 8 as const,
@@ -66,6 +66,7 @@ export default function PermitMap() {
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedPermit, setSelectedPermit] = useState<Permit | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Init map
@@ -205,6 +206,7 @@ export default function PermitMap() {
 
   const selectPermit = useCallback((permit: Permit, map?: maplibregl.Map) => {
     setSelectedPermit(permit);
+    setSidebarOpen(false); // close sidebar on mobile when selecting
     const m = map ?? mapRef.current;
     if (m && permit.latitude && permit.longitude) {
       const lng = parseFloat(permit.longitude);
@@ -247,8 +249,14 @@ export default function PermitMap() {
 
   return (
     <div className="permit-app">
+      {/* Mobile map toggle */}
+      <button className="permit-mobile-toggle" onClick={() => setSidebarOpen(o => !o)}>
+        {sidebarOpen ? '✕' : '☰ Filters'}
+        {!sidebarOpen && filtered.length > 0 && <span className="permit-mobile-count">{filtered.length.toLocaleString()}</span>}
+      </button>
+
       {/* Sidebar */}
-      <div className="permit-sidebar">
+      <div className={`permit-sidebar${sidebarOpen ? ' permit-sidebar--open' : ''}`}>
         <div className="permit-sidebar-header">
           <div className="permit-title">
             <span className="permit-title-main">PERMIT EXPLORER</span>
@@ -342,8 +350,8 @@ export default function PermitMap() {
             <>
               <span className="permit-count">{filtered.length.toLocaleString()} permits</span>
               {overLimit && (
-                <span className="permit-limit-warn" title={`API returned max ${RESULT_LIMIT}. Tighten filters to see all results.`}>
-                  ⚠ capped at {RESULT_LIMIT.toLocaleString()}
+                <span className="permit-limit-warn" title="Tighten filters (date range, type, borough) to see all results.">
+                  ⚠ map capped at 2,500
                 </span>
               )}
             </>
