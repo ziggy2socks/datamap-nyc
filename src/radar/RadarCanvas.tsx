@@ -149,18 +149,41 @@ export function RadarCanvas({ complaints, replayTime, dotLifetime, onPing, onBat
       ctx.fillStyle = '#010408';
       ctx.fillRect(0, 0, SIZE, SIZE);
 
-      // Grid rings
-      ctx.strokeStyle = 'rgba(0,180,200,0.08)';
-      ctx.lineWidth = 0.5;
+      // Grid rings — more visible
+      ctx.strokeStyle = 'rgba(0,200,220,0.18)';
+      ctx.lineWidth = 1;
       for (let r = R / 4; r <= R; r += R / 4) {
         ctx.beginPath();
         ctx.arc(CX, CY, r, 0, 2 * Math.PI);
         ctx.stroke();
       }
 
-      // Crosshairs
-      ctx.strokeStyle = 'rgba(0,180,200,0.05)';
-      ctx.setLineDash([3, 8]);
+      // Thin orthogonal grid inside the radar circle
+      const gridSpacing = R / 6; // ~6 cells across each axis
+      ctx.strokeStyle = 'rgba(0,200,220,0.06)';
+      ctx.lineWidth = 0.5;
+      for (let gx = CX - R; gx <= CX + R; gx += gridSpacing) {
+        // clip each line to circle
+        const halfH = Math.sqrt(Math.max(0, R * R - (gx - CX) ** 2));
+        if (halfH < 1) continue;
+        ctx.beginPath();
+        ctx.moveTo(gx, CY - halfH);
+        ctx.lineTo(gx, CY + halfH);
+        ctx.stroke();
+      }
+      for (let gy = CY - R; gy <= CY + R; gy += gridSpacing) {
+        const halfW = Math.sqrt(Math.max(0, R * R - (gy - CY) ** 2));
+        if (halfW < 1) continue;
+        ctx.beginPath();
+        ctx.moveTo(CX - halfW, gy);
+        ctx.lineTo(CX + halfW, gy);
+        ctx.stroke();
+      }
+
+      // Crosshairs (cardinal axes — slightly brighter than grid)
+      ctx.strokeStyle = 'rgba(0,200,220,0.10)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([4, 6]);
       ctx.beginPath();
       ctx.moveTo(CX - R, CY); ctx.lineTo(CX + R, CY);
       ctx.moveTo(CX, CY - R); ctx.lineTo(CX, CY + R);
@@ -341,11 +364,33 @@ export function RadarCanvas({ complaints, replayTime, dotLifetime, onPing, onBat
       ctx.restore(); // end clip
 
       // Outer ring
-      ctx.strokeStyle = 'rgba(0,200,220,0.3)';
+      ctx.strokeStyle = 'rgba(0,200,220,0.45)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(CX, CY, R, 0, 2 * Math.PI);
       ctx.stroke();
+
+      // Perimeter tick marks — 360 ticks (1° each), tied to sweep rotation timing
+      // Major tick every 10° (longer), minor every 1° (short)
+      // Ticks are outside the clipped area so they sit on the rim
+      const TICK_INNER_MINOR = R + 2;
+      const TICK_OUTER_MINOR = R + 5;
+      const TICK_INNER_MAJOR = R + 2;
+      const TICK_OUTER_MAJOR = R + 9;
+      ctx.lineWidth = 0.75;
+      for (let deg = 0; deg < 360; deg++) {
+        const rad = (deg - 90) * (Math.PI / 180); // 0° at top
+        const isMajor = deg % 10 === 0;
+        const inner = isMajor ? TICK_INNER_MAJOR : TICK_INNER_MINOR;
+        const outer = isMajor ? TICK_OUTER_MAJOR : TICK_OUTER_MINOR;
+        const cosR = Math.cos(rad);
+        const sinR = Math.sin(rad);
+        ctx.strokeStyle = isMajor ? 'rgba(0,220,240,0.55)' : 'rgba(0,200,220,0.25)';
+        ctx.beginPath();
+        ctx.moveTo(CX + cosR * inner, CY + sinR * inner);
+        ctx.lineTo(CX + cosR * outer, CY + sinR * outer);
+        ctx.stroke();
+      }
 
       // Edge vignette
       ctx.save();
