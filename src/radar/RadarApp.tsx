@@ -151,7 +151,7 @@ export default function App() {
       {/* ── Mobile top bar ── */}
       <div className="mobile-bar">
         <div className="mobile-title">NYC 311 RADAR</div>
-        <div className="mobile-time">{timeStr} ET</div>
+        <div className="mobile-time">{dataDate} {timeStr} ET</div>
         <button
           className={`mobile-btn ${mobilePanel === 'filters' ? 'mobile-btn--active' : ''}`}
           onClick={() => setMobilePanel(mobilePanel === 'filters' ? 'none' : 'filters')}
@@ -221,7 +221,7 @@ export default function App() {
 
       {/* ── Right feed (desktop) / persistent mini-feed (mobile) ── */}
       <div className="feed-panel">
-        <div className="feed-header">{dataDate || '—'} FEED</div>
+        <div className="feed-header">TICKET FEED</div>
         <div className="feed-list">
           {feed.length === 0 && (
             <div className="feed-empty">Waiting for signals…</div>

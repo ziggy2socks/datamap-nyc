@@ -73,11 +73,13 @@ html, body, #root {
   padding: 8px;
   background: rgba(0, 200, 220, 0.04);
   border: 1px solid rgba(0, 200, 220, 0.12);
+  text-align: center;
 }
 
 .replay-date-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 
@@ -97,8 +99,8 @@ html, body, #root {
 }
 
 .replay-date {
-  font-size: 8px;
-  letter-spacing: 2px;
+  font-size: 13px;
+  letter-spacing: 3px;
   color: var(--cyan);
   font-weight: 700;
 }
@@ -436,8 +438,8 @@ html, body, #root {
   }
 
   .radar-canvas {
-    width: min(100vw, calc(100vh - 44px - var(--mobile-feed-h, 100px)));
-    height: min(100vw, calc(100vh - 44px - var(--mobile-feed-h, 100px)));
+    width: min(100vw, calc(100vh - 44px - 200px));
+    height: min(100vw, calc(100vh - 44px - 200px));
   }
 
   /* Sidebar — slide-in overlay from left */
@@ -456,11 +458,11 @@ html, body, #root {
     transform: translateX(0);
   }
 
-  /* Feed — always-visible mini feed at bottom */
+  /* Feed — always-visible feed at bottom */
   .feed-panel {
     position: relative;
     width: 100%;
-    height: var(--mobile-feed-h, 100px);
+    height: 200px;
     flex-shrink: 0;
     border-left: none;
     border-top: 1px solid var(--border);
