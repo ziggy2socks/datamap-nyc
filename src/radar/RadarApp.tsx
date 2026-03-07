@@ -221,7 +221,7 @@ export default function App() {
 
       {/* ── Right feed (desktop) / persistent mini-feed (mobile) ── */}
       <div className="feed-panel">
-        <div className="feed-header">TICKET FEED</div>
+        <div className="feed-header">SERVICE REQUEST FEED</div>
         <div className="feed-list">
           {feed.length === 0 && (
             <div className="feed-empty">Waiting for signals…</div>
