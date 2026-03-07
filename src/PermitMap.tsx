@@ -64,7 +64,7 @@ export default function PermitMap() {
   const [filtered, setFiltered] = useState<Permit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [totalCount, setTotalCount] = useState(0);
+  const [_totalCount, setTotalCount] = useState(0);
   const [selectedPermit, setSelectedPermit] = useState<Permit | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);

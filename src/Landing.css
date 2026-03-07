@@ -1,0 +1,25 @@
+.landing {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020810;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+.landing-content {
+  text-align: center;
+}
+
+.landing-crane {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.landing-text {
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: rgba(180, 200, 210, 0.4);
+  text-transform: lowercase;
+}

@@ -22,6 +22,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/jobs/, '/w9ak-ipjd.json'),
       },
+      '/api/311': {
+        target: 'https://data.cityofnewyork.us/resource',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/311/, '/erm2-nwe9.json'),
+      },
     },
   },
   optimizeDeps: {
