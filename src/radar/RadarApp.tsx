@@ -70,6 +70,7 @@ export default function App() {
   const [mobilePanel, setMobilePanel] = useState<'none' | 'feed' | 'filters'>('none');
 
   const replayRef = useRef(0);
+  const feedListRef = useRef<HTMLDivElement>(null);
   const lastTickRef = useRef(0);
   const needsBatchRef = useRef(false);
 
@@ -251,6 +252,21 @@ export default function App() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Scroll expanded feed item into view
+  useEffect(() => {
+    if (!expandedKey || !feedListRef.current) return;
+    const el = feedListRef.current.querySelector(`[data-key="${expandedKey}"]`);
+    if (!el) return;
+    const isMobile = window.innerWidth < 768;
+    if (isMobile) {
+      // Mobile: snap to top of feed
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } else {
+      // Desktop: scroll just enough to make it visible, centered if possible
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [expandedKey]);
 
   const filteredComplaints = useMemo(() =>
     complaints.filter(c => activeTypes.has(c.complaint_type)),
@@ -632,7 +648,7 @@ export default function App() {
             ? `${feed[0].borough} BREAKDOWN`
             : 'SERVICE REQUEST FEED'}
         </div>
-        <div className="feed-list">
+        <div className="feed-list" ref={feedListRef}>
           {feed.length === 0 && (
             <div className="feed-empty">Waiting for signals…</div>
           )}
@@ -667,6 +683,7 @@ export default function App() {
             return (
               <div
                 key={c.unique_key}
+                data-key={c.unique_key}
                 className={`feed-item ${isExpanded ? 'feed-item--expanded' : ''}`}
                 style={{ '--item-color': getComplaintColor(c.complaint_type) } as React.CSSProperties}
                 onMouseEnter={() => setHoveredKey(c.unique_key)}
