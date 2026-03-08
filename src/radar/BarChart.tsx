@@ -8,12 +8,12 @@ interface Props {
   selectedDate: string; // YYYY-MM-DD
 }
 
-const FONT = "700 9px 'Courier New', monospace";
-const LABEL_FONT = "600 8px 'Courier New', monospace";
-const PAD_L = 52;
+const FONT = "700 11px 'Courier New', monospace";
+const LABEL_FONT = "600 10px 'Courier New', monospace";
+const PAD_L = 58;
 const PAD_R = 28;
 const PAD_T = 32;
-const PAD_B = 52;
+const PAD_B = 56;
 
 export function BarChart({ complaints, mode, selectedDate }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -72,19 +72,19 @@ export function BarChart({ complaints, mode, selectedDate }: Props) {
     const barOffset = (slotW - barW) / 2;
 
     // ── Y-axis grid + labels
-    ctx.lineWidth = 0.5;
     ctx.font = LABEL_FONT;
     ctx.textAlign = 'right';
     for (let i = 0; i <= yTicks; i++) {
       const val = Math.round((yMax / yTicks) * i);
       const y = PAD_T + chartH - (val / yMax) * chartH;
-      ctx.strokeStyle = 'rgba(0,200,220,0.10)';
+      ctx.strokeStyle = i === 0 ? 'rgba(0,200,220,0.25)' : 'rgba(0,200,220,0.18)';
+      ctx.lineWidth = i === 0 ? 1 : 0.75;
       ctx.beginPath();
       ctx.moveTo(PAD_L - 4, y);
       ctx.lineTo(W - PAD_R, y);
       ctx.stroke();
-      ctx.fillStyle = 'rgba(0,200,220,0.45)';
-      ctx.fillText(val.toLocaleString(), PAD_L - 8, y + 3);
+      ctx.fillStyle = 'rgba(0,210,230,0.65)';
+      ctx.fillText(val.toLocaleString(), PAD_L - 8, y + 4);
     }
 
     // ── Draw bars (consistent type order — bottom to top = highest to lowest volume globally)
@@ -123,15 +123,13 @@ export function BarChart({ complaints, mode, selectedDate }: Props) {
     ctx.lineTo(W - PAD_R, PAD_T + chartH);
     ctx.stroke();
 
-    // ── X-axis labels
+    // ── X-axis labels — every bar
     ctx.font = LABEL_FONT;
-    ctx.fillStyle = 'rgba(0,200,220,0.5)';
+    ctx.fillStyle = 'rgba(0,210,230,0.6)';
     ctx.textAlign = 'center';
-    const labelEvery = mode === 'day' ? 3 : 5;
     for (let i = 0; i < numBars; i++) {
-      if (i % labelEvery !== 0) continue;
       const x = PAD_L + i * slotW + slotW / 2;
-      const label = mode === 'day' ? `${String(i).padStart(2, '0')}:00` : `${i + 1}`;
+      const label = mode === 'day' ? `${String(i).padStart(2, '0')}` : `${i + 1}`;
       ctx.fillText(label, x, PAD_T + chartH + 16);
     }
 
