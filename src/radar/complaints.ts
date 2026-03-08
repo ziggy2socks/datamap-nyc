@@ -155,12 +155,13 @@ function nycYesterday(daysBack: number): string {
  * complete day, then fetches only that day's full data.
  */
 export async function fetchComplaints(): Promise<{ data: Complaint[]; date: string }> {
-  // Always prefer yesterday — use it if it has any data at all.
-  // Only fall further back if yesterday is truly empty (upload not yet run).
-  for (let i = 1; i <= 3; i++) {
+  // NYC Open Data uploads daily in batch overnight — a "complete" day has 5k+ records.
+  // Partial uploads (a few hundred) mean the batch hasn't finished yet; skip to prior day.
+  const COMPLETE_DAY_THRESHOLD = 3000;
+  for (let i = 1; i <= 4; i++) {
     const dateStr = nycYesterday(i);
     const count = await countForDate(dateStr);
-    if (count > 0) {
+    if (count >= COMPLETE_DAY_THRESHOLD) {
       const data = await fetchComplaintsForDate(dateStr);
       return { data, date: dateStr };
     }
