@@ -108,6 +108,22 @@ export async function fetchComplaintsForDate(dateStr: string): Promise<Complaint
   return res.json();
 }
 
+/**
+ * Fetch complaints of a specific type within a date range — for feed panel on chart click.
+ * Returns up to 50 most recent.
+ */
+export async function fetchComplaintsByType(
+  complaintType: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<Complaint[]> {
+  const typeEnc = encodeURIComponent(complaintType).replace(/%20/g, '+');
+  const qs = `$where=complaint_type='${typeEnc}'+AND+created_date>='${dateFrom}'+AND+created_date<'${dateTo}'&$order=created_date+DESC&$limit=50`;
+  const res = await fetch(`/api/311?${qs}`, { cache: 'no-store' });
+  if (!res.ok) return [];
+  return res.json();
+}
+
 /** Quick count check — avoids downloading 14MB just to discover a date is incomplete */
 async function countForDate(dateStr: string): Promise<number> {
   const nextDay = new Date(new Date(dateStr + 'T00:00:00').getTime() + 86400000)

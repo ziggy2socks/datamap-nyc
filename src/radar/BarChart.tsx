@@ -11,11 +11,25 @@ import { getComplaintColor } from './complaints';
 
 export type ChartMode = 'stack' | 'time';
 
+export interface ChartHit {
+  type: string;
+  barIdx: number;
+  count: number;
+}
+
 interface Props {
   complaints: Complaint[];
   resolution: 'day' | 'month';
   selectedDate: string;
   chartMode: ChartMode;
+  onHover?: (hit: ChartHit | null, x: number, y: number) => void;
+  onSegmentClick?: (hit: ChartHit) => void;
+}
+
+// Rendered region for hit-testing
+interface HitRegion {
+  x: number; y: number; w: number; h: number;
+  type: string; barIdx: number; count: number;
 }
 
 const FONT       = "700 11px 'Courier New', monospace";
@@ -34,6 +48,8 @@ function easeOut(t: number): number {
 interface Block {
   barIdx: number;
   color: string;
+  type: string;     // complaint_type string
+  count: number;    // number of complaints this block represents (always 1 in day/time mode)
   // Normalised Y position in [0,1] within the chart height (0=bottom,1=top)
   stackY: number;   // y in stack mode
   timeY:  number;   // y in time mode
@@ -137,6 +153,8 @@ function buildBlocks(
         blocks.push({
           barIdx: i,
           color,
+          type,
+          count: 1,
           stackY: sYs[k],
           timeY:  tYs[k],
           height: BLOCK_H,
@@ -148,7 +166,7 @@ function buildBlocks(
   return { blocks, yMax };
 }
 
-export function BarChart({ complaints, resolution, selectedDate, chartMode }: Props) {
+export function BarChart({ complaints, resolution, selectedDate, chartMode, onHover, onSegmentClick }: Props) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef       = useRef(0);
@@ -156,6 +174,7 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode }: Pr
   const prevModeRef  = useRef<ChartMode>(chartMode);
   const blocksRef    = useRef<Block[]>([]);
   const yMaxRef      = useRef(1);
+  const hitRegionsRef = useRef<HitRegion[]>([]);
 
   // Recompute blocks when data changes
   useEffect(() => {
@@ -247,6 +266,7 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode }: Pr
       // Stagger: bar 0 leads by 0ms, bar N-1 lags by STAGGER_MS
       const STAGGER_MS = 120;
       const totalMs    = ANIM_MS + STAGGER_MS;
+      const newHitRegions: HitRegion[] = [];
 
       for (const b of blocks) {
         let interpT: number;
@@ -285,8 +305,12 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode }: Pr
         ctx.globalAlpha = 0.2;
         ctx.fillStyle   = '#fff';
         ctx.fillRect(x, y, barW, 0.8);
+
+        // Record hit region
+        newHitRegions.push({ x, y, w: barW, h: Math.max(bh, 2), type: b.type, barIdx: b.barIdx, count: b.count });
       }
       ctx.globalAlpha = 1;
+      hitRegionsRef.current = newHitRegions;
 
       // ── Baseline
       ctx.strokeStyle = 'rgba(0,200,220,0.2)';
@@ -327,9 +351,33 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode }: Pr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complaints, resolution, selectedDate, chartMode]);
 
+  const hitTest = (e: React.MouseEvent<HTMLCanvasElement>): ChartHit | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+    // Search hit regions in reverse (top blocks first)
+    const regions = hitRegionsRef.current;
+    for (let i = regions.length - 1; i >= 0; i--) {
+      const r = regions[i];
+      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+        return { type: r.type, barIdx: r.barIdx, count: r.count };
+      }
+    }
+    return null;
+  };
+
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+      <canvas ref={canvasRef}
+        style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }}
+        onMouseMove={e => onHover?.(hitTest(e), e.clientX, e.clientY)}
+        onMouseLeave={() => onHover?.(null, 0, 0)}
+        onClick={e => { const h = hitTest(e); if (h) onSegmentClick?.(h); }}
+      />
     </div>
   );
 }

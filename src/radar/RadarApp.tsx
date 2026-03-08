@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { RadarCanvas } from './RadarCanvas';
 import { BarChart } from './BarChart';
 import { MonthChart } from './MonthChart';
-import type { ChartMode } from './BarChart';
-import { fetchComplaints, fetchComplaintsForDate, fetchMonthAggregate, getComplaintColor, getTopComplaintTypes } from './complaints';
+import type { ChartMode, ChartHit } from './BarChart';
+import { fetchComplaints, fetchComplaintsForDate, fetchMonthAggregate, fetchComplaintsByType, getComplaintColor, getTopComplaintTypes } from './complaints';
 import type { DailyCount } from './complaints';
 import type { Complaint } from './complaints';
 import './RadarApp.css';
@@ -17,6 +17,7 @@ export default function App() {
   const [viewMode,        setViewMode]        = useState<ViewMode>('radar');
   const [chartResolution, setChartResolution] = useState<'day' | 'month'>('day');
   const [chartMode,       setChartMode]       = useState<ChartMode>('stack');
+  const [tooltip, setTooltip] = useState<{ type: string; count: number; x: number; y: number } | null>(null);
   const [monthData, setMonthData] = useState<DailyCount[]>([]);
   const [monthLoading,    setMonthLoading]    = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -138,16 +139,24 @@ export default function App() {
     loadMonth(newDate);
   };
 
-  // Drill from month bar click → load that day
-  const handleDrillDay = useCallback(async (dateStr: string) => {
-    setChartResolution('day');
-    setLoading(true);
-    try {
-      const data = await fetchComplaintsForDate(dateStr);
-      if (data.length > 0) initializeData(data, dateStr);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
-  }, []);
+  // Chart segment click → fetch type-filtered complaints → populate feed
+  const handleSegmentClick = useCallback(async (hit: ChartHit) => {
+    if (!selectedDate) return;
+    // Determine date range based on resolution
+    let dateFrom = selectedDate;
+    let dateTo   = selectedDate;
+    if (chartResolution === 'month') {
+      const d  = new Date(selectedDate + 'T12:00:00');
+      dateFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+      const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      dateTo   = nextMonth.toISOString().split('T')[0];
+    } else {
+      const next = new Date(new Date(selectedDate + 'T00:00:00').getTime() + 86400000);
+      dateTo = next.toISOString().split('T')[0];
+    }
+    const results = await fetchComplaintsByType(hit.type, dateFrom, dateTo);
+    setFeed(results.slice(0, MAX_FEED));
+  }, [selectedDate, chartResolution]);
 
   // Replay clock — always 1× real time
   useEffect(() => {
@@ -230,24 +239,17 @@ export default function App() {
               <button className="date-nav"
                 onClick={() => chartResolution === 'month' && viewMode !== 'radar' ? switchMonth(1) : switchDate(1)}>▶</button>
             </div>
-            {/* In chart mode: show DAY|MONTH sub-toggle instead of clock */}
-            {viewMode === 'radar' ? (
+            {viewMode === 'radar' && (
               <>
                 <div className="replay-time">{timeStr} ET</div>
                 <div className="replay-delay">24H DELAY</div>
               </>
-            ) : (
-              <div className="chart-res-toggle">
-                <button className={`chart-res-btn${chartResolution === 'day' ? ' active' : ''}`}
-                  onClick={() => handleChartResolution('day')}>DAY</button>
-                <button className={`chart-res-btn${chartResolution === 'month' ? ' active' : ''}`}
-                  onClick={() => handleChartResolution('month')}>MONTH</button>
-              </div>
             )}
           </div>
 
-          {/* Main view toggle: RADAR | CHART icons */}
+          {/* View toggle row: radar icon | then text labels */}
           <div className="view-toggle">
+            {/* Radar icon */}
             <button className={`view-btn${viewMode === 'radar' ? ' active' : ''}`}
               onClick={() => handleViewChange('radar')} title="Radar view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -258,8 +260,9 @@ export default function App() {
                 <circle cx="9" cy="9" r="1" fill="currentColor"/>
               </svg>
             </button>
+            {/* Bar chart icon */}
             <button className={`view-btn${viewMode !== 'radar' ? ' active' : ''}`}
-              onClick={() => handleViewChange('day')} title="Bar chart">
+              onClick={() => handleViewChange('day')} title="Chart view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 {[3,5,4,7,6,8,5,9,7,6,8,6].map((h, i) => (
                   <rect key={i} x={1 + i * 1.35} y={16 - h} width="1" height={h} fill="currentColor" opacity="0.85" rx="0.3"/>
@@ -269,13 +272,15 @@ export default function App() {
             </button>
           </div>
 
-          {/* In chart mode (day only): STACK | TIME sub-toggle */}
-          {viewMode !== 'radar' && chartResolution === 'day' && (
+          {/* Unified chart level toggle: MONTH | DAY | TIME (shown only in chart mode) */}
+          {viewMode !== 'radar' && (
             <div className="chart-mode-toggle">
-              <button className={`chart-mode-btn${chartMode === 'stack' ? ' active' : ''}`}
-                onClick={() => setChartMode('stack')} title="Stack by type">STACK</button>
-              <button className={`chart-mode-btn${chartMode === 'time' ? ' active' : ''}`}
-                onClick={() => setChartMode('time')} title="Position by timestamp">TIME</button>
+              <button className={`chart-mode-btn${chartResolution === 'month' ? ' active' : ''}`}
+                onClick={() => handleChartResolution('month')}>MONTH</button>
+              <button className={`chart-mode-btn${chartResolution === 'day' && chartMode === 'stack' ? ' active' : ''}`}
+                onClick={() => { handleChartResolution('day'); setChartMode('stack'); }}>DAY</button>
+              <button className={`chart-mode-btn${chartResolution === 'day' && chartMode === 'time' ? ' active' : ''}`}
+                onClick={() => { handleChartResolution('day'); setChartMode('time'); }}>TIME</button>
             </div>
           )}
           <div className="meta">
@@ -337,7 +342,8 @@ export default function App() {
               <MonthChart
                 data={monthData}
                 selectedDate={selectedDate}
-                onDrillDay={handleDrillDay}
+                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, x, y } : null)}
+                onSegmentClick={handleSegmentClick}
               />
             )}
             {chartResolution === 'day' && (
@@ -346,7 +352,16 @@ export default function App() {
                 resolution="day"
                 selectedDate={selectedDate}
                 chartMode={chartMode}
+                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, x, y } : null)}
+                onSegmentClick={handleSegmentClick}
               />
+            )}
+            {/* Tooltip */}
+            {tooltip && (
+              <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}>
+                <div className="chart-tooltip-type">{tooltip.type}</div>
+                <div className="chart-tooltip-count">{tooltip.count.toLocaleString()}</div>
+              </div>
             )}
           </div>
         )}

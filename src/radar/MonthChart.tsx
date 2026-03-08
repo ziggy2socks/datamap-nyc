@@ -6,11 +6,18 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type { DailyCount } from './complaints';
 import { getComplaintColor } from './complaints';
+import type { ChartHit } from './BarChart';
 
 interface Props {
   data: DailyCount[];
-  selectedDate: string; // YYYY-MM-DD (any day in the month)
-  onDrillDay: (dateStr: string) => void;
+  selectedDate: string;
+  onHover?: (hit: ChartHit | null, x: number, y: number) => void;
+  onSegmentClick?: (hit: ChartHit) => void;
+}
+
+interface HitRegion {
+  x: number; y: number; w: number; h: number;
+  type: string; barIdx: number; count: number;
 }
 
 const FONT       = "700 11px 'Courier New', monospace";
@@ -20,9 +27,10 @@ const PAD_R = 28;
 const PAD_T = 32;
 const PAD_B = 56;
 
-export function MonthChart({ data, selectedDate, onDrillDay }: Props) {
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Props) {
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const containerRef   = useRef<HTMLDivElement>(null);
+  const hitRegionsRef  = useRef<HitRegion[]>([]);
 
   // Pre-compute for render
   const d = new Date(selectedDate + 'T12:00:00');
@@ -80,6 +88,7 @@ export function MonthChart({ data, selectedDate, onDrillDay }: Props) {
     }
 
     // Bars
+    const newHits: HitRegion[] = [];
     for (let i = 0; i < numBars; i++) {
       const bucket = buckets[i];
       if (totals[i] === 0) continue;
@@ -92,13 +101,15 @@ export function MonthChart({ data, selectedDate, onDrillDay }: Props) {
         stackY -= bh;
         ctx.globalAlpha = 0.82;
         ctx.fillStyle   = getComplaintColor(type);
-        ctx.fillRect(x, stackY, barW, bh);
+        ctx.fillRect(x, stackY, barW, Math.max(bh, 1));
         ctx.globalAlpha = 0.2;
         ctx.fillStyle   = '#fff';
         ctx.fillRect(x, stackY, barW, 0.8);
+        newHits.push({ x, y: stackY, w: barW, h: Math.max(bh, 2), type, barIdx: i, count });
       }
       ctx.globalAlpha = 1;
     }
+    hitRegionsRef.current = newHits;
 
     // Baseline
     ctx.strokeStyle = 'rgba(0,200,220,0.2)';
@@ -117,11 +128,11 @@ export function MonthChart({ data, selectedDate, onDrillDay }: Props) {
       ctx.fillText(`${i + 1}`, x, PAD_T + chartH + 16);
     }
 
-    // Axis label + hint
+    // Axis label
     ctx.font      = FONT;
     ctx.fillStyle = 'rgba(0,200,220,0.3)';
     ctx.textAlign = 'center';
-    ctx.fillText('DAY OF MONTH  ·  click to drill into day', PAD_L + chartW / 2, H - 8);
+    ctx.fillText('DAY OF MONTH  ·  click segment to filter feed', PAD_L + chartW / 2, H - 8);
 
     // Total
     const total = totals.reduce((a, v) => a + v, 0);
@@ -131,29 +142,31 @@ export function MonthChart({ data, selectedDate, onDrillDay }: Props) {
 
   }, [data, selectedDate]);
 
-  // Click → drill to that day
-  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const hitTest = useCallback((e: React.MouseEvent<HTMLCanvasElement>): ChartHit | null => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
     const rect   = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const cx     = (e.clientX - rect.left) * scaleX;
-    const chartW = canvas.width - PAD_L - PAD_R;
-    const slotW  = chartW / numBars;
-    const barIdx = Math.floor((cx - PAD_L) / slotW);
-    if (barIdx < 0 || barIdx >= numBars) return;
-
-    const d2     = new Date(selectedDate + 'T12:00:00');
-    const clicked = new Date(d2.getFullYear(), d2.getMonth(), barIdx + 1);
-    const iso    = clicked.toISOString().split('T')[0];
-    onDrillDay(iso);
-  }, [selectedDate, numBars, onDrillDay]);
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+    const regions = hitRegionsRef.current;
+    for (let i = regions.length - 1; i >= 0; i--) {
+      const r = regions[i];
+      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
+        return { type: r.type, barIdx: r.barIdx, count: r.count };
+    }
+    return null;
+  }, []);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
       <canvas ref={canvasRef}
-        style={{ display: 'block', width: '100%', height: '100%', cursor: 'pointer' }}
-        onClick={handleClick} />
+        style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }}
+        onMouseMove={e => onHover?.(hitTest(e), e.clientX, e.clientY)}
+        onMouseLeave={() => onHover?.(null, 0, 0)}
+        onClick={e => { const h = hitTest(e); if (h) onSegmentClick?.(h); }}
+      />
     </div>
   );
 }

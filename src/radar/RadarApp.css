@@ -281,6 +281,28 @@ html, body, #root {
 .chart-mode-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .chart-mode-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
 
+/* ── Chart tooltip ── */
+.chart-tooltip {
+  position: fixed;
+  z-index: 500;
+  background: rgba(2,8,16,0.95);
+  border: 1px solid rgba(0,200,220,0.4);
+  padding: 6px 10px;
+  pointer-events: none;
+  max-width: 200px;
+}
+.chart-tooltip-type {
+  font: 600 9px var(--font);
+  color: var(--cyan);
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+}
+.chart-tooltip-count {
+  font: 700 11px var(--font);
+  color: var(--text);
+  margin-top: 2px;
+}
+
 /* ── Chart wrapper ── */
 .chart-wrap {
   position: relative;
