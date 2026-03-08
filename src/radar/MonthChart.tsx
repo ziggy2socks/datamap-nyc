@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useCallback } from 'react';
 import type { DailyCount } from './complaints';
-import { getComplaintColor } from './complaints';
+import { getComplaintColor, getStackOrder } from './complaints';
 import type { ChartHit } from './BarChart';
 
 interface Props {
@@ -36,10 +36,10 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
   const d = new Date(selectedDate + 'T12:00:00');
   const numBars = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 
-  // Global type order (most frequent on bottom)
+  // Global type order — shared pinned order + volume-sorted remainder
   const typeTotals = new Map<string, number>();
   for (const row of data) typeTotals.set(row.complaint_type, (typeTotals.get(row.complaint_type) ?? 0) + row.count);
-  const typeOrder = [...typeTotals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  const typeOrder = getStackOrder(typeTotals);
 
   // Bucket by day-of-month (1-indexed → 0-indexed bar)
   const buckets: Map<string, number>[] = Array.from({ length: numBars }, () => new Map());

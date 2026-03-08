@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type { Complaint } from './complaints';
-import { getComplaintColor } from './complaints';
+import { getComplaintColor, getStackOrder } from './complaints';
 
 export type ChartMode = 'stack' | 'time';
 
@@ -61,10 +61,10 @@ function buildBlocks(
   numBars: number,
   resolution: 'day' | 'month',
 ): { blocks: Block[]; yMax: number } {
-  // ── Global type order (most frequent on bottom in stack mode)
+  // ── Global type order — shared pinned order + volume-sorted remainder
   const typeTotals = new Map<string, number>();
   for (const c of complaints) typeTotals.set(c.complaint_type, (typeTotals.get(c.complaint_type) ?? 0) + 1);
-  const typeOrder = [...typeTotals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  const typeOrder = getStackOrder(typeTotals);
 
   // ── Bucket by bar
   const barBuckets: { type: string; minute: number; color: string }[][] =

@@ -1,6 +1,17 @@
 // NYC 311 complaint data via NYC Open Data
 // Dataset: 311 Service Requests from 2020 to Present (erm2-nwe9)
 
+/**
+ * Fixed priority order for stacked bar charts — bottom of stack first.
+ * Types listed here are always pinned to the bottom in this order.
+ * All other types sort by volume above them.
+ */
+export const PINNED_TYPE_ORDER = [
+  'HEAT/HOT WATER',
+  'Illegal Parking',
+  'Snow',
+];
+
 export interface Complaint {
   unique_key: string;
   complaint_type: string;
@@ -202,6 +213,19 @@ export async function fetchMonthAggregate(dateStr: string): Promise<DailyCount[]
     complaint_type: r.complaint_type,
     count: parseInt(r.cnt, 10),
   }));
+}
+
+/**
+ * Build a consistent stack order for both charts.
+ * Pinned types go first (bottom of stack), then remaining types by volume desc.
+ * @param typeTotals — Map of complaint_type → total count
+ */
+export function getStackOrder(typeTotals: Map<string, number>): string[] {
+  const pinned   = PINNED_TYPE_ORDER.filter(t => typeTotals.has(t));
+  const unpinned = [...typeTotals.keys()]
+    .filter(t => !PINNED_TYPE_ORDER.includes(t))
+    .sort((a, b) => (typeTotals.get(b) ?? 0) - (typeTotals.get(a) ?? 0));
+  return [...pinned, ...unpinned];
 }
 
 export function getTopComplaintTypes(complaints: Complaint[], n = 12): string[] {
