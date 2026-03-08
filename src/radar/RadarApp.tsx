@@ -1,24 +1,24 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { RadarCanvas } from './RadarCanvas';
 import { BarChart } from './BarChart';
-import { fetchComplaints, fetchComplaintsForDate, fetchComplaintsForMonth, getComplaintColor, getTopComplaintTypes } from './complaints';
+import { fetchComplaints, fetchComplaintsForDate, getComplaintColor, getTopComplaintTypes } from './complaints';
 import type { Complaint } from './complaints';
 import './RadarApp.css';
 
 const MAX_FEED = 50;
 const DOT_LIFETIME_MS = 10 * 60 * 1000;
 
-type ViewMode = 'radar' | 'day' | 'month';
+type ViewMode = 'radar' | 'day';
 
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('radar');
   const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [monthComplaints, setMonthComplaints] = useState<Complaint[]>([]);
+
   const [topTypes, setTopTypes] = useState<string[]>([]);
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
   const [feed, setFeed] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [chartLoading, setChartLoading] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [replayTime, setReplayTime] = useState<number>(0);
   const [dataDate, setDataDate] = useState<string>('');
@@ -97,25 +97,8 @@ export default function App() {
     }
   };
 
-  // Load month data when switching to month view
-  const loadMonth = useCallback(async (date: string) => {
-    if (!date) return;
-    setChartLoading(true);
-    try {
-      const data = await fetchComplaintsForMonth(date);
-      setMonthComplaints(data);
-    } catch (e) {
-      setError('Failed to load month data');
-    } finally {
-      setChartLoading(false);
-    }
-  }, []);
-
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
-    if (mode === 'month' && monthComplaints.length === 0 && selectedDate) {
-      loadMonth(selectedDate);
-    }
   };
 
   // Replay clock — always 1× real time
@@ -200,7 +183,7 @@ export default function App() {
             <div className="replay-delay">24H DELAY</div>
           </div>
           <div className="view-toggle">
-            {/* Radar icon: concentric circles with sweep line */}
+            {/* Radar icon */}
             <button className={`view-btn${viewMode === 'radar' ? ' active' : ''}`}
               onClick={() => handleViewChange('radar')} title="Radar view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -211,9 +194,9 @@ export default function App() {
                 <circle cx="9" cy="9" r="1" fill="currentColor"/>
               </svg>
             </button>
-            {/* Day chart icon: 24-bar silhouette (varied heights) */}
+            {/* Bar chart icon */}
             <button className={`view-btn${viewMode === 'day' ? ' active' : ''}`}
-              onClick={() => handleViewChange('day')} title="Day chart (24h)">
+              onClick={() => handleViewChange('day')} title="24h bar chart">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 {[3,5,4,7,6,8,5,9,7,6,8,6].map((h, i) => (
                   <rect key={i} x={1 + i * 1.35} y={16 - h} width="1" height={h} fill="currentColor" opacity="0.85" rx="0.3"/>
@@ -221,20 +204,11 @@ export default function App() {
                 <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
               </svg>
             </button>
-            {/* Month chart icon: 30-bar silhouette (wider bars) */}
-            <button className={`view-btn${viewMode === 'month' ? ' active' : ''}`}
-              onClick={() => handleViewChange('month')} title="Month chart (30d)">
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                {[3,5,7,6,8,9,7,6,8,5].map((h, i) => (
-                  <rect key={i} x={1 + i * 1.65} y={16 - h} width="1.3" height={h} fill="currentColor" opacity="0.85" rx="0.3"/>
-                ))}
-                <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
-              </svg>
-            </button>
           </div>
           <div className="meta">
-            {loading || chartLoading ? 'LOADING…' : viewMode === 'month'
-              ? `${monthComplaints.length.toLocaleString()} REPORTS`
+            {loading ? 'LOADING…'
+              : viewMode === 'day'
+              ? `${filteredComplaints.length.toLocaleString()} REPORTS`
               : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
           </div>
         </div>
@@ -281,16 +255,13 @@ export default function App() {
             hoveredKey={hoveredKey || expandedKey}
           />
         )}
-        {(viewMode === 'day' || viewMode === 'month') && (
+        {viewMode === 'day' && (
           <div className="chart-wrap">
-            {chartLoading && <div className="chart-loading">LOADING…</div>}
-            {!chartLoading && (
-              <BarChart
-                complaints={viewMode === 'month' ? monthComplaints : filteredComplaints}
-                mode={viewMode}
-                selectedDate={selectedDate}
-              />
-            )}
+            <BarChart
+              complaints={filteredComplaints}
+              mode="day"
+              selectedDate={selectedDate}
+            />
           </div>
         )}
       </div>

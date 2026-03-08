@@ -6,15 +6,14 @@ interface Props {
   complaints: Complaint[];
   mode: 'day' | 'month';
   selectedDate: string; // YYYY-MM-DD
-  onBarClick?: (label: string) => void;
 }
 
 const FONT = "700 9px 'Courier New', monospace";
 const LABEL_FONT = "600 8px 'Courier New', monospace";
-const PAD_L = 52;  // left axis
-const PAD_R = 16;
-const PAD_T = 24;
-const PAD_B = 48;  // bottom labels
+const PAD_L = 52;
+const PAD_R = 28;
+const PAD_T = 32;
+const PAD_B = 52;
 
 export function BarChart({ complaints, mode, selectedDate }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,103 +40,113 @@ export function BarChart({ complaints, mode, selectedDate }: Props) {
     const chartW = W - PAD_L - PAD_R;
     const chartH = H - PAD_T - PAD_B;
 
-    // Bucket complaints by bar index
-    const buckets: Map<string, number>[] = Array.from({ length: numBars }, () => new Map());
+    // ── Step 1: compute global type order (by total volume across all bars)
+    // This gives consistent stacking — same color always in same vertical lane
+    const typeTotals = new Map<string, number>();
+    for (const c of complaints) {
+      const t = c.complaint_type;
+      typeTotals.set(t, (typeTotals.get(t) ?? 0) + 1);
+    }
+    // Ordered: most frequent first (bottom of stack)
+    const typeOrder = [...typeTotals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(e => e[0]);
 
+    // ── Step 2: bucket by bar index, keyed by type name
+    const buckets: Map<string, number>[] = Array.from({ length: numBars }, () => new Map());
     for (const c of complaints) {
       const d = new Date(c.created_date);
       const idx = mode === 'day' ? d.getHours() : d.getDate() - 1;
       if (idx < 0 || idx >= numBars) continue;
-      const color = getComplaintColor(c.complaint_type);
-      buckets[idx].set(color, (buckets[idx].get(color) ?? 0) + 1);
+      buckets[idx].set(c.complaint_type, (buckets[idx].get(c.complaint_type) ?? 0) + 1);
     }
 
-    // Totals per bar
     const totals = buckets.map(b => [...b.values()].reduce((a, v) => a + v, 0));
     const maxTotal = Math.max(...totals, 1);
-
-    // Round up to a nice number for y-axis
     const yMax = niceMax(maxTotal);
     const yTicks = 4;
 
-    const barW = (chartW / numBars) * 0.72;
-    const gap  = (chartW / numBars) * 0.28;
+    // Bar geometry — narrower bars with more breathing room
+    const slotW = chartW / numBars;
+    const barW = slotW * 0.52;
+    const barOffset = (slotW - barW) / 2;
 
-    // Draw y-axis grid lines + labels
-    ctx.strokeStyle = 'rgba(0,200,220,0.12)';
+    // ── Y-axis grid + labels
     ctx.lineWidth = 0.5;
     ctx.font = LABEL_FONT;
-    ctx.fillStyle = 'rgba(0,200,220,0.5)';
     ctx.textAlign = 'right';
-
     for (let i = 0; i <= yTicks; i++) {
       const val = Math.round((yMax / yTicks) * i);
       const y = PAD_T + chartH - (val / yMax) * chartH;
+      ctx.strokeStyle = 'rgba(0,200,220,0.10)';
       ctx.beginPath();
       ctx.moveTo(PAD_L - 4, y);
       ctx.lineTo(W - PAD_R, y);
       ctx.stroke();
-      ctx.fillText(val.toLocaleString(), PAD_L - 7, y + 3);
+      ctx.fillStyle = 'rgba(0,200,220,0.45)';
+      ctx.fillText(val.toLocaleString(), PAD_L - 8, y + 3);
     }
 
-    // Draw bars (stacked by complaint type color)
+    // ── Draw bars (consistent type order — bottom to top = highest to lowest volume globally)
     for (let i = 0; i < numBars; i++) {
-      const x = PAD_L + (i / numBars) * chartW + gap / 2;
+      const x = PAD_L + i * slotW + barOffset;
       const bucket = buckets[i];
-      if (bucket.size === 0) continue;
+      if ([...bucket.values()].reduce((a, v) => a + v, 0) === 0) continue;
 
-      // Sort colors by count desc so largest segment is at bottom
-      const sorted = [...bucket.entries()].sort((a, b) => b[1] - a[1]);
-      let stackY = PAD_T + chartH;
+      let stackY = PAD_T + chartH; // start from baseline, go up
 
-      for (const [color, count] of sorted) {
+      // Draw in global type order (most frequent type at bottom)
+      for (const type of typeOrder) {
+        const count = bucket.get(type) ?? 0;
+        if (count === 0) continue;
         const barH = (count / yMax) * chartH;
         stackY -= barH;
+        const color = getComplaintColor(type);
+
+        ctx.globalAlpha = 0.82;
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.85;
         ctx.fillRect(x, stackY, barW, barH);
-        // Top highlight
-        ctx.globalAlpha = 0.3;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(x, stackY, barW, 1);
+
+        // Subtle top edge highlight
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x, stackY, barW, 0.8);
       }
       ctx.globalAlpha = 1;
     }
 
-    // X-axis labels
-    ctx.font = LABEL_FONT;
-    ctx.fillStyle = 'rgba(0,200,220,0.55)';
-    ctx.textAlign = 'center';
-
-    const labelEvery = mode === 'day' ? 3 : (numBars <= 28 ? 7 : 5);
-    for (let i = 0; i < numBars; i++) {
-      if (i % labelEvery !== 0) continue;
-      const x = PAD_L + (i / numBars) * chartW + (chartW / numBars) / 2;
-      const label = mode === 'day' ? `${String(i).padStart(2, '0')}h` : `${i + 1}`;
-      ctx.fillText(label, x, H - PAD_B + 14);
-    }
-
-    // X-axis baseline
-    ctx.strokeStyle = 'rgba(0,200,220,0.25)';
+    // ── X-axis baseline
+    ctx.strokeStyle = 'rgba(0,200,220,0.2)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(PAD_L, PAD_T + chartH);
     ctx.lineTo(W - PAD_R, PAD_T + chartH);
     ctx.stroke();
 
-    // Axis label
-    ctx.font = FONT;
-    ctx.fillStyle = 'rgba(0,200,220,0.35)';
+    // ── X-axis labels
+    ctx.font = LABEL_FONT;
+    ctx.fillStyle = 'rgba(0,200,220,0.5)';
     ctx.textAlign = 'center';
-    const axisLabel = mode === 'day' ? 'HOUR OF DAY' : 'DAY OF MONTH';
-    ctx.fillText(axisLabel, PAD_L + chartW / 2, H - 6);
+    const labelEvery = mode === 'day' ? 3 : 5;
+    for (let i = 0; i < numBars; i++) {
+      if (i % labelEvery !== 0) continue;
+      const x = PAD_L + i * slotW + slotW / 2;
+      const label = mode === 'day' ? `${String(i).padStart(2, '0')}:00` : `${i + 1}`;
+      ctx.fillText(label, x, PAD_T + chartH + 16);
+    }
 
-    // Total count top-right
+    // ── Axis label
+    ctx.font = FONT;
+    ctx.fillStyle = 'rgba(0,200,220,0.3)';
+    ctx.textAlign = 'center';
+    ctx.fillText(mode === 'day' ? 'HOUR OF DAY' : 'DAY OF MONTH', PAD_L + chartW / 2, H - 8);
+
+    // ── Total count + legend note top-right
     const total = totals.reduce((a, v) => a + v, 0);
     ctx.font = FONT;
-    ctx.fillStyle = 'rgba(0,220,240,0.6)';
+    ctx.fillStyle = 'rgba(0,220,240,0.55)';
     ctx.textAlign = 'right';
-    ctx.fillText(`${total.toLocaleString()} REPORTS`, W - PAD_R, PAD_T - 6);
+    ctx.fillText(`${total.toLocaleString()} REPORTS`, W - PAD_R, PAD_T - 10);
 
   }, [complaints, mode, selectedDate]);
 
