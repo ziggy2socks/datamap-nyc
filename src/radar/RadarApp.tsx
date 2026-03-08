@@ -12,7 +12,7 @@ import './RadarApp.css';
 const MAX_FEED = 50;
 const DOT_LIFETIME_MS = 10 * 60 * 1000;
 // NYC Open Data 311 uploads daily overnight — data is typically 1-2 days behind
-const DATA_LAG_DAYS = 2;
+const DATA_LAG_DAYS = 3;
 
 
 function maxDataDate(): string {
@@ -42,13 +42,13 @@ export default function App() {
   const [monthLoading,    setMonthLoading]    = useState(false);
 
   // Trends state
-  const [trendsYear,    setTrendsYear]    = useState(() => new Date().getFullYear());
-  const [trendsYearB,   setTrendsYearB]   = useState<number | null>(null);
-  const [trendsData,    setTrendsData]    = useState<MonthCount[]>([]);
-  const [trendsDataB,   setTrendsDataB]   = useState<MonthCount[]>([]);
-  const [trendsLoading, setTrendsLoading] = useState(false);
-  const [trendsShowAll, setTrendsShowAll] = useState(false);
-  const [trendsTypes,   setTrendsTypes]   = useState<string[]>([]);
+  const [trendsYear,     setTrendsYear]     = useState(() => new Date().getFullYear());
+  const [trendsData,     setTrendsData]     = useState<MonthCount[]>([]);
+  const [trendsAllData,  setTrendsAllData]  = useState<Map<number, MonthCount[]>>(new Map());
+  const [trendsLoading,  setTrendsLoading]  = useState(false);
+  const [trendsShowAll,  setTrendsShowAll]  = useState(false);
+  const [trendsShowYoY,  setTrendsShowYoY]  = useState(false);
+  const [trendsTypes,    setTrendsTypes]    = useState<string[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -135,16 +135,25 @@ export default function App() {
     }
   };
 
-  const loadTrends = useCallback(async (yr: number, yrB?: number | null) => {
+  const loadTrends = useCallback(async (yr: number, withAllYears = false) => {
     setTrendsLoading(true);
     try {
-      const [d, dB] = await Promise.all([
+      const currentYear = new Date().getFullYear();
+      const allYears = Array.from({ length: currentYear - 2019 }, (_, i) => 2020 + i);
+      const yearsToFetch = withAllYears
+        ? allYears.filter(y => y !== yr)
+        : [];
+      const [d, ...rest] = await Promise.all([
         fetchYearAggregate(yr),
-        yrB != null ? fetchYearAggregate(yrB) : Promise.resolve([]),
+        ...yearsToFetch.map(y => fetchYearAggregate(y)),
       ]);
       setTrendsData(d);
-      if (yrB != null) setTrendsDataB(dB);
-      // Rank types by total volume across the year
+      if (withAllYears) {
+        const m = new Map<number, MonthCount[]>();
+        m.set(yr, d);
+        yearsToFetch.forEach((y, i) => m.set(y, rest[i]));
+        setTrendsAllData(m);
+      }
       const totals = new Map<string, number>();
       for (const r of d) totals.set(r.complaint_type, (totals.get(r.complaint_type) ?? 0) + r.count);
       setTrendsTypes([...totals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]));
@@ -160,7 +169,7 @@ export default function App() {
       if (monthData.length === 0 && selectedDate) loadMonth(selectedDate);
     }
     if (mode === 'trends' && trendsData.length === 0) {
-      loadTrends(trendsYear, trendsYearB);
+      loadTrends(trendsYear, trendsShowYoY);
     }
   };
 
@@ -525,66 +534,77 @@ export default function App() {
                 ? <div className="chart-loading">LOADING {trendsYear}…</div>
                 : <TrendsChart
                     data={trendsData}
-                    dataB={trendsYearB != null ? trendsDataB : undefined}
+                    allYearsData={trendsShowYoY ? trendsAllData : undefined}
                     year={trendsYear}
-                    yearB={trendsYearB ?? undefined}
                     showAll={trendsShowAll}
                     topTypes={trendsTypes}
                     cutoffMonth={maxDataMonth(trendsYear)}
+                    onMonthClick={(month, rows) => {
+                      const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                      // Push to feed as synthetic complaint-like entries
+                      const synth = rows.map((r, i) => ({
+                        unique_key: `trends-${trendsYear}-${month}-${i}`,
+                        complaint_type: r.type,
+                        borough: `${MONTHS[month]} ${trendsYear}`,
+                        created_date: `${trendsYear}-${String(month+1).padStart(2,'0')}-01T00:00:00.000`,
+                        descriptor: `${r.count.toLocaleString()} complaints`,
+                        status: '',
+                        agency_name: '',
+                        incident_address: '',
+                        incident_zip: '',
+                        intersection_street_1: '',
+                        community_board: '',
+                        latitude: '',
+                        longitude: '',
+                      }));
+                      setFeed(synth as any);
+                    }}
                   />
               }
-              {/* Lag notice — shown when viewing current year */}
               {trendsYear === maxDataYear() && !trendsLoading && (
                 <div className="trends-lag-notice">
-                  ⚠ NYC Open Data lags ~2 days · data through {maxDataDate()}
+                  ⚠ data through {maxDataDate()}
                 </div>
               )}
             </div>
             {/* Controls bar */}
             <div className="view-controls">
-              {/* Col 1: top-8 / all toggle */}
               <div className="vc-col vc-col--left">
                 <button className={`vc-toggle-btn${!trendsShowAll ? ' active' : ''}`}
                   onClick={() => setTrendsShowAll(false)}>TOP 8</button>
                 <button className={`vc-toggle-btn${trendsShowAll ? ' active' : ''}`}
                   onClick={() => setTrendsShowAll(true)}>ALL</button>
               </div>
-              {/* Col 2: YoY compare toggle */}
               <div className="vc-col vc-col--left">
                 <button
-                  className={`vc-toggle-btn${trendsYearB != null ? ' active' : ''}`}
+                  className={`vc-toggle-btn${trendsShowYoY ? ' active' : ''}`}
                   onClick={() => {
-                    if (trendsYearB != null) {
-                      setTrendsYearB(null);
-                      setTrendsDataB([]);
-                    } else {
-                      const yrB = trendsYear - 1;
-                      setTrendsYearB(yrB);
-                      loadTrends(trendsYear, yrB);
-                    }
+                    const next = !trendsShowYoY;
+                    setTrendsShowYoY(next);
+                    if (next && trendsAllData.size === 0) loadTrends(trendsYear, true);
                   }}
-                  title="Compare with previous year"
+                  title="Show all years + 5yr average"
                 >YoY</button>
               </div>
-              {/* Col 3: year nav */}
               <div className="vc-col vc-col--center">
                 <button className="vc-nav-btn" onClick={() => {
                   const yr = trendsYear - 1;
                   if (yr < 2020) return;
                   setTrendsYear(yr);
-                  setTrendsData([]); setTrendsDataB([]);
-                  loadTrends(yr, trendsYearB != null ? yr - 1 : null);
-                  if (trendsYearB != null) setTrendsYearB(yr - 1);
+                  setTrendsData([]);
+                  loadTrends(yr, trendsShowYoY);
                 }}>◀</button>
                 <span className="vc-date">{trendsYear}</span>
-                <button className="vc-nav-btn" onClick={() => {
-                  const yr = trendsYear + 1;
-                  if (yr > maxDataYear()) return;
-                  setTrendsYear(yr);
-                  setTrendsData([]); setTrendsDataB([]);
-                  loadTrends(yr, trendsYearB != null ? yr - 1 : null);
-                  if (trendsYearB != null) setTrendsYearB(yr - 1);
-                }}>▶</button>
+                <button className="vc-nav-btn"
+                  disabled={trendsYear >= maxDataYear()}
+                  style={{ opacity: trendsYear >= maxDataYear() ? 0.25 : undefined }}
+                  onClick={() => {
+                    const yr = trendsYear + 1;
+                    if (yr > maxDataYear()) return;
+                    setTrendsYear(yr);
+                    setTrendsData([]);
+                    loadTrends(yr, trendsShowYoY);
+                  }}>▶</button>
               </div>
             </div>
           </div>
@@ -593,7 +613,11 @@ export default function App() {
 
       {/* ── Right feed (desktop) / persistent mini-feed (mobile) ── */}
       <div className="feed-panel">
-        <div className="feed-header">SERVICE REQUEST FEED</div>
+        <div className="feed-header">
+          {feed.length > 0 && feed[0].unique_key.startsWith('trends-')
+            ? `${feed[0].borough} BREAKDOWN`
+            : 'SERVICE REQUEST FEED'}
+        </div>
         <div className="feed-list">
           {feed.length === 0 && (
             <div className="feed-empty">Waiting for signals…</div>
@@ -614,7 +638,9 @@ export default function App() {
                   <div className="feed-type">{c.complaint_type}</div>
                   {c.descriptor && <div className="feed-desc">{c.descriptor}</div>}
                   <div className="feed-meta">
-                    {c.borough} · {new Date(c.created_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}
+                    {c.unique_key.startsWith('trends-')
+                      ? c.borough
+                      : `${c.borough} · ${new Date(c.created_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}`}
                   </div>
                   {isExpanded && (
                     <div className="feed-detail">
