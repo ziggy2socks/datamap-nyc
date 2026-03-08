@@ -329,7 +329,6 @@ export default function App() {
                 ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
                 : `${filteredComplaints.length.toLocaleString()} REPORTS`}
             </div>
-            <div className="view-column-spacer">
             <div className="chart-wrap">
               {monthLoading && <div className="chart-loading">LOADING MONTH…</div>}
               {!monthLoading && chartResolution === 'month' && (
@@ -372,7 +371,6 @@ export default function App() {
                 );
               })()}
             </div>
-            </div>{/* end view-column-spacer */}
 
             {/* Controls bar — 3-column grid */}
             {(() => {
