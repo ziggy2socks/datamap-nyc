@@ -283,7 +283,7 @@ html, body, #root {
   transition: color 0.15s;
   padding: 0;
 }
-.vc-icon-btn svg { transform: rotate(90deg); }
+.vc-icon-btn svg { transform: rotate(-90deg); }
 .vc-icon-btn:hover { color: var(--cyan); }
 .vc-icon-btn.active { color: var(--cyan); }
 
@@ -358,6 +358,15 @@ html, body, #root {
 }
 .view-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .view-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
+
+/* ── Radar controls — centered date nav only ── */
+.view-controls--radar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  grid-template-columns: unset;
+}
 
 /* ── Chart tooltip ── */
 .chart-tooltip {

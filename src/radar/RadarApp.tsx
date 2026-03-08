@@ -308,15 +308,11 @@ export default function App() {
               onBatchLoad={handleBatchLoad}
               hoveredKey={hoveredKey || expandedKey}
             />
-            {/* Controls bar — 3-column grid */}
-            <div className="view-controls">
-              <div className="vc-col vc-col--left" />{/* col 1: empty */}
-              <div className="vc-col vc-col--left" />{/* col 2: empty */}
-              <div className="vc-col vc-col--center">
-                <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
-                <span className="vc-date">{dataDate}</span>
-                <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
-              </div>
+            {/* Controls bar — centered date nav only */}
+            <div className="view-controls view-controls--radar">
+              <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
+              <span className="vc-date">{dataDate}</span>
+              <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
             </div>
           </div>
         )}
