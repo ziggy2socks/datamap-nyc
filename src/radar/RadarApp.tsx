@@ -212,14 +212,17 @@ export default function App() {
     else setActiveTypes(new Set(topTypes));
   };
 
-  // replayTime drives the canvas animation; time display removed from UI
+  const replayDate = new Date(replayTime);
+  const timeStr = replayDate.toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false, timeZone: 'America/New_York',
+  });
 
   return (
     <div className="app">
       {/* ── Mobile top bar ── */}
       <div className="mobile-bar">
         <div className="mobile-title">NYC 311 RADAR</div>
-        <div className="mobile-time">{dataDate}</div>
         <button
           className={`mobile-btn ${mobilePanel === 'filters' ? 'mobile-btn--active' : ''}`}
           onClick={() => setMobilePanel(mobilePanel === 'filters' ? 'none' : 'filters')}
@@ -304,8 +307,9 @@ export default function App() {
               onBatchLoad={handleBatchLoad}
               hoveredKey={hoveredKey || expandedKey}
             />
-            {/* Controls bar — centered date nav only */}
+            {/* Controls bar — live time + date nav */}
             <div className="view-controls view-controls--radar">
+              <span className="vc-time">{timeStr}</span>
               <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
               <span className="vc-date">{dataDate}</span>
               <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
