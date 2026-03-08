@@ -299,15 +299,19 @@ export default function App() {
               onBatchLoad={handleBatchLoad}
               hoveredKey={hoveredKey || expandedKey}
             />
-            {/* Controls bar — fixed height, always present */}
+            {/* Controls bar — fixed height, 5-column grid */}
             <div className="view-controls">
-              <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
-              <span className="vc-date">{dataDate}</span>
-              <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
-              <span className="vc-sep" />
-              <span className="vc-meta">{loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}</span>
-              <span className="vc-sep" />
-              <span className="vc-sub">{timeStr} ET</span>
+              <div className="vc-col vc-col--left">{/* col 1: empty for radar */}</div>
+              <div className="vc-col vc-col--center">{/* col 2: empty for radar */}</div>
+              <div className="vc-col vc-col--center">
+                <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
+                <span className="vc-date">{dataDate}</span>
+                <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
+              </div>
+              <div className="vc-col vc-col--center">{/* col 4: empty */}</div>
+              <div className="vc-col vc-col--right">
+                <span className="vc-meta">{loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}</span>
+              </div>
             </div>
           </div>
         )}
@@ -358,38 +362,54 @@ export default function App() {
               })()}
             </div>
 
-            {/* Controls bar — fixed height, always present */}
-            <div className="view-controls">
-              {/* Resolution toggle: MONTH | DAY */}
-              <button className={`vc-toggle-btn${chartResolution === 'month' ? ' active' : ''}`}
-                onClick={() => handleChartResolution('month')}>MONTH</button>
-              <button className={`vc-toggle-btn${chartResolution === 'day' ? ' active' : ''}`}
-                onClick={() => handleChartResolution('day')}>DAY</button>
-              <span className="vc-sep" />
-              {/* Nav — steps by month or day */}
-              <button className="vc-nav-btn"
-                onClick={() => chartResolution === 'month' ? switchMonth(-1) : switchDate(-1)}>◀</button>
-              <span className="vc-date">{dataDate}</span>
-              <button className="vc-nav-btn"
-                onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}>▶</button>
-              <span className="vc-sep" />
-              {/* STACK | TIME only in day mode, otherwise count */}
-              {chartResolution === 'day' ? (
-                <>
-                  <button className={`vc-toggle-btn${chartMode === 'stack' ? ' active' : ''}`}
-                    onClick={() => setChartMode('stack')}>STACK</button>
-                  <button className={`vc-toggle-btn${chartMode === 'time' ? ' active' : ''}`}
-                    onClick={() => setChartMode('time')}>TIME</button>
-                  <span className="vc-sep" />
-                </>
-              ) : null}
-              <span className="vc-meta">
-                {loading ? 'LOADING…'
-                  : chartResolution === 'month'
-                  ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
-                  : `${filteredComplaints.length.toLocaleString()} REPORTS`}
-              </span>
-            </div>
+            {/* Controls bar — fixed height, 5-column grid */}
+            {(() => {
+              const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+              const d = new Date(selectedDate + 'T12:00:00');
+              const chartDateLabel = chartResolution === 'day'
+                ? `${MONTHS[d.getMonth()]} ${String(d.getDate()).padStart(2,'0')}`
+                : `${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
+              const reportCount = loading ? 'LOADING…'
+                : chartResolution === 'month'
+                ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
+                : `${filteredComplaints.length.toLocaleString()} REPORTS`;
+              return (
+                <div className="view-controls">
+                  {/* Col 1: MONTH | DAY toggle — left */}
+                  <div className="vc-col vc-col--left">
+                    <button className={`vc-toggle-btn${chartResolution === 'month' ? ' active' : ''}`}
+                      onClick={() => handleChartResolution('month')}>MONTH</button>
+                    <button className={`vc-toggle-btn${chartResolution === 'day' ? ' active' : ''}`}
+                      onClick={() => handleChartResolution('day')}>DAY</button>
+                  </div>
+                  {/* Col 2: STACK | TIME (day only) — center */}
+                  <div className="vc-col vc-col--center">
+                    {chartResolution === 'day' && (
+                      <>
+                        <button className={`vc-toggle-btn${chartMode === 'stack' ? ' active' : ''}`}
+                          onClick={() => setChartMode('stack')}>STACK</button>
+                        <button className={`vc-toggle-btn${chartMode === 'time' ? ' active' : ''}`}
+                          onClick={() => setChartMode('time')}>TIME</button>
+                      </>
+                    )}
+                  </div>
+                  {/* Col 3: nav + date — center */}
+                  <div className="vc-col vc-col--center">
+                    <button className="vc-nav-btn"
+                      onClick={() => chartResolution === 'month' ? switchMonth(-1) : switchDate(-1)}>◀</button>
+                    <span className="vc-date">{chartDateLabel}</span>
+                    <button className="vc-nav-btn"
+                      onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}>▶</button>
+                  </div>
+                  {/* Col 4: empty — center */}
+                  <div className="vc-col vc-col--center" />
+                  {/* Col 5: count — right */}
+                  <div className="vc-col vc-col--right">
+                    <span className="vc-meta">{reportCount}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

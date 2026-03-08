@@ -234,27 +234,27 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-/* ── View controls bar — fixed height, single row, always present ── */
+/* ── View controls bar — fixed height, 5-column grid, always present ── */
 .view-controls {
   width: 100%;
   height: 48px;
   flex-shrink: 0;
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 20px;
+  padding: 0 16px;
   background: rgba(1,4,10,0.7);
   border-top: 1px solid var(--border);
 }
 
-.vc-sep {
-  width: 1px;
-  height: 18px;
-  background: var(--border);
-  flex-shrink: 0;
+.vc-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.vc-col--left   { justify-content: flex-start; }
+.vc-col--center { justify-content: center; }
+.vc-col--right  { justify-content: flex-end; }
 
 .vc-nav-btn {
   font: bold 9px var(--font);
