@@ -299,17 +299,15 @@ export default function App() {
               onBatchLoad={handleBatchLoad}
               hoveredKey={hoveredKey || expandedKey}
             />
-            {/* Radar controls — below the circle */}
+            {/* Controls bar — fixed height, always present */}
             <div className="view-controls">
-              <div className="vc-nav-row">
-                <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
-                <span className="vc-date">{dataDate}</span>
-                <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
-              </div>
-              <div className="vc-meta">
-                {loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
-              </div>
-              <div className="vc-sub">{timeStr} ET · 24H DELAY</div>
+              <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
+              <span className="vc-date">{dataDate}</span>
+              <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
+              <span className="vc-sep" />
+              <span className="vc-meta">{loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}</span>
+              <span className="vc-sep" />
+              <span className="vc-sub">{timeStr} ET</span>
             </div>
           </div>
         )}
@@ -360,39 +358,37 @@ export default function App() {
               })()}
             </div>
 
-            {/* Chart controls — below the chart */}
+            {/* Controls bar — fixed height, always present */}
             <div className="view-controls">
-              {/* Row 1: resolution toggle */}
-              <div className="vc-toggle-row">
-                <button className={`vc-toggle-btn${chartResolution === 'month' ? ' active' : ''}`}
-                  onClick={() => handleChartResolution('month')}>MONTH</button>
-                <button className={`vc-toggle-btn${chartResolution === 'day' ? ' active' : ''}`}
-                  onClick={() => handleChartResolution('day')}>DAY</button>
-              </div>
-              {/* Row 2: nav (unit changes based on resolution) */}
-              <div className="vc-nav-row">
-                <button className="vc-nav-btn"
-                  onClick={() => chartResolution === 'month' ? switchMonth(-1) : switchDate(-1)}>◀</button>
-                <span className="vc-date">{dataDate}</span>
-                <button className="vc-nav-btn"
-                  onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}>▶</button>
-              </div>
-              {/* Row 3: DAY sub-toggle (STACK / TIME) — only when day is active */}
-              {chartResolution === 'day' && (
-                <div className="vc-toggle-row">
+              {/* Resolution toggle: MONTH | DAY */}
+              <button className={`vc-toggle-btn${chartResolution === 'month' ? ' active' : ''}`}
+                onClick={() => handleChartResolution('month')}>MONTH</button>
+              <button className={`vc-toggle-btn${chartResolution === 'day' ? ' active' : ''}`}
+                onClick={() => handleChartResolution('day')}>DAY</button>
+              <span className="vc-sep" />
+              {/* Nav — steps by month or day */}
+              <button className="vc-nav-btn"
+                onClick={() => chartResolution === 'month' ? switchMonth(-1) : switchDate(-1)}>◀</button>
+              <span className="vc-date">{dataDate}</span>
+              <button className="vc-nav-btn"
+                onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}>▶</button>
+              <span className="vc-sep" />
+              {/* STACK | TIME only in day mode, otherwise count */}
+              {chartResolution === 'day' ? (
+                <>
                   <button className={`vc-toggle-btn${chartMode === 'stack' ? ' active' : ''}`}
                     onClick={() => setChartMode('stack')}>STACK</button>
                   <button className={`vc-toggle-btn${chartMode === 'time' ? ' active' : ''}`}
                     onClick={() => setChartMode('time')}>TIME</button>
-                </div>
-              )}
-              {/* Meta count */}
-              <div className="vc-meta">
+                  <span className="vc-sep" />
+                </>
+              ) : null}
+              <span className="vc-meta">
                 {loading ? 'LOADING…'
                   : chartResolution === 'month'
                   ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
                   : `${filteredComplaints.length.toLocaleString()} REPORTS`}
-              </div>
+              </span>
             </div>
           </div>
         )}
