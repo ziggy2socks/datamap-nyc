@@ -9,6 +9,7 @@ interface Props {
   yearB?: number;
   showAll: boolean;            // false = top 8 types only
   topTypes: string[];          // pre-ranked from current year data
+  cutoffMonth?: number;        // last month with data (0-based); months after are faded + line drawn
   onHoverMonth?: (month: number | null) => void;
 }
 
@@ -30,12 +31,12 @@ function buildTypeMap(data: MonthCount[]): Map<string, number[]> {
   return map;
 }
 
-export function TrendsChart({ data, dataB, year, yearB: _yearB, showAll, topTypes, onHoverMonth }: Props) {
+export function TrendsChart({ data, dataB, year, yearB: _yearB, showAll, topTypes, cutoffMonth, onHoverMonth }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hovered, setHovered] = useState<{ month: number; x: number; y: number } | null>(null);
   const [hoveredType, setHoveredType] = useState<string | null>(null);
 
-  const draw = useCallback(() => {
+  const draw = useCallback(() => { // cutoffMonth in scope via closure
     const canvas = canvasRef.current;
     if (!canvas || data.length === 0) return;
     const dpr = window.devicePixelRatio || 1;
@@ -147,6 +148,31 @@ export function TrendsChart({ data, dataB, year, yearB: _yearB, showAll, topType
     drawLine(typeTotals, '#ffffff', hoveredType ? 0.3 : 0.85, 2, false);
     if (typeTotalsB) {
       drawLine(typeTotalsB, '#ffffff', 0.25, 1.5, true);
+    }
+
+    // ── Cutoff line — vertical dashed line at last available month
+    if (cutoffMonth !== undefined && cutoffMonth >= 0 && cutoffMonth < 11) {
+      const cx = xForMonth(cutoffMonth);
+      // Shade future months
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(cx, PAD.t, xForMonth(11) + 10 - cx, chartH);
+      ctx.restore();
+      // Dashed vertical line
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,200,220,0.5)';
+      ctx.setLineDash([3, 4]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, PAD.t);
+      ctx.lineTo(cx, PAD.t + chartH);
+      ctx.stroke();
+      // Label
+      ctx.fillStyle = 'rgba(0,200,220,0.5)';
+      ctx.font = `600 8px var(--font, monospace)`;
+      ctx.textAlign = 'left';
+      ctx.fillText('DATA ENDS', cx + 4, PAD.t + 10);
+      ctx.restore();
     }
 
     // ── Dots at hovered month

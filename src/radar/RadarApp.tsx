@@ -11,6 +11,25 @@ import './RadarApp.css';
 
 const MAX_FEED = 50;
 const DOT_LIFETIME_MS = 10 * 60 * 1000;
+// NYC Open Data 311 uploads daily overnight — data is typically 1-2 days behind
+const DATA_LAG_DAYS = 2;
+
+
+function maxDataDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - DATA_LAG_DAYS);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+function maxDataYear(): number {
+  return new Date(maxDataDate()).getFullYear();
+}
+function maxDataMonth(year: number): number {
+  // For current data year, cap at the latest available month; past years = 11
+  const max = new Date(maxDataDate());
+  if (year < max.getFullYear()) return 11;
+  if (year > max.getFullYear()) return -1; // no data
+  return max.getMonth();
+}
 
 type ViewMode = 'radar' | 'day' | 'trends';
 
@@ -99,6 +118,7 @@ export default function App() {
     const current = new Date(selectedDate + 'T12:00:00');
     current.setDate(current.getDate() + offset);
     const newDate = current.toISOString().split('T')[0];
+    if (newDate > maxDataDate()) return; // don't go into unavailable future
     setLoading(true);
     setError(null);
     try {
@@ -166,6 +186,10 @@ export default function App() {
     if (!selectedDate) return;
     const d = new Date(selectedDate + 'T12:00:00');
     d.setMonth(d.getMonth() + offset);
+    // Block forward navigation past available data
+    const maxDate = new Date(maxDataDate() + 'T12:00:00');
+    if (d.getFullYear() > maxDate.getFullYear() ||
+       (d.getFullYear() === maxDate.getFullYear() && d.getMonth() > maxDate.getMonth())) return;
     const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
     setMonthData([]);
     setSelectedDate(newDate);
@@ -351,7 +375,10 @@ export default function App() {
               <span className="vc-time">{timeStr}</span>
               <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
               <span className="vc-date">{dataDate}</span>
-              <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
+              <button className="vc-nav-btn"
+                onClick={() => switchDate(1)}
+                disabled={selectedDate >= maxDataDate()}
+                style={{ opacity: selectedDate >= maxDataDate() ? 0.25 : undefined }}>▶</button>
             </div>
           </div>
         )}
@@ -462,7 +489,23 @@ export default function App() {
                       onClick={() => chartResolution === 'month' ? switchMonth(-1) : switchDate(-1)}>◀</button>
                     <span className="vc-date">{chartDateLabel}</span>
                     <button className="vc-nav-btn"
-                      onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}>▶</button>
+                      onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}
+                      disabled={(() => {
+                        const max = new Date(maxDataDate() + 'T12:00:00');
+                        const cur = new Date(selectedDate + 'T12:00:00');
+                        if (chartResolution === 'day') return selectedDate >= maxDataDate();
+                        return cur.getFullYear() > max.getFullYear() ||
+                          (cur.getFullYear() === max.getFullYear() && cur.getMonth() >= max.getMonth());
+                      })()}
+                      style={{ opacity: (() => {
+                        const max = new Date(maxDataDate() + 'T12:00:00');
+                        const cur = new Date(selectedDate + 'T12:00:00');
+                        const atMax = chartResolution === 'day'
+                          ? selectedDate >= maxDataDate()
+                          : cur.getFullYear() > max.getFullYear() ||
+                            (cur.getFullYear() === max.getFullYear() && cur.getMonth() >= max.getMonth());
+                        return atMax ? 0.25 : undefined;
+                      })() }}>▶</button>
                   </div>
                 </div>
               );
@@ -487,8 +530,15 @@ export default function App() {
                     yearB={trendsYearB ?? undefined}
                     showAll={trendsShowAll}
                     topTypes={trendsTypes}
+                    cutoffMonth={maxDataMonth(trendsYear)}
                   />
               }
+              {/* Lag notice — shown when viewing current year */}
+              {trendsYear === maxDataYear() && !trendsLoading && (
+                <div className="trends-lag-notice">
+                  ⚠ NYC Open Data lags ~2 days · data through {maxDataDate()}
+                </div>
+              )}
             </div>
             {/* Controls bar */}
             <div className="view-controls">
@@ -529,7 +579,7 @@ export default function App() {
                 <span className="vc-date">{trendsYear}</span>
                 <button className="vc-nav-btn" onClick={() => {
                   const yr = trendsYear + 1;
-                  if (yr > new Date().getFullYear()) return;
+                  if (yr > maxDataYear()) return;
                   setTrendsYear(yr);
                   setTrendsData([]); setTrendsDataB([]);
                   loadTrends(yr, trendsYearB != null ? yr - 1 : null);
