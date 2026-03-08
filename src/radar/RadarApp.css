@@ -639,7 +639,7 @@ html, body, #root {
   .radar-canvas {
     width: min(100vw - 16px, calc(100vh - 44px - 200px - 48px - 20px));
     height: min(100vw - 16px, calc(100vh - 44px - 200px - 48px - 20px));
-    margin-bottom: 8px;
+    margin-bottom: 0;
   }
 
   /* Controls bar on mobile — col 1 left, col 2 left, col 3 right-ish */
