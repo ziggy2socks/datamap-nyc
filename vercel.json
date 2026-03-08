@@ -6,7 +6,7 @@
     { "source": "/api/permits/:path*", "destination": "https://data.cityofnewyork.us/resource/rbx6-tga4.json/:path*" },
     { "source": "/api/jobs/:path*",    "destination": "https://data.cityofnewyork.us/resource/w9ak-ipjd.json/:path*" },
     { "source": "/api/311",            "destination": "https://data.cityofnewyork.us/resource/erm2-nwe9.json" },
-    { "source": "/311radar",           "destination": "/index.html" },
+    { "source": "/311",                "destination": "/index.html" },
     { "source": "/suitability",        "destination": "/index.html" },
     { "source": "/permits",            "destination": "/index.html" },
     { "source": "/(.*)",               "destination": "/index.html" }

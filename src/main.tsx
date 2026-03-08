@@ -7,7 +7,7 @@ const path = window.location.pathname;
 async function render() {
   let Component: React.ComponentType;
 
-  if (path.startsWith('/311radar')) {
+  if (path.startsWith('/311')) {
     const mod = await import('./radar/RadarApp');
     Component = mod.default;
   } else if (path.startsWith('/suitability')) {
