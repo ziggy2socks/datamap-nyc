@@ -2,16 +2,17 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { RadarCanvas } from './RadarCanvas';
 import { BarChart } from './BarChart';
 import { MonthChart } from './MonthChart';
+import { TrendsChart } from './TrendsChart';
 import type { ChartMode, ChartHit } from './BarChart';
-import { fetchComplaints, fetchComplaintsForDate, fetchMonthAggregate, fetchComplaintsByType, getComplaintColor, getTopComplaintTypes } from './complaints';
-import type { DailyCount } from './complaints';
+import { fetchComplaints, fetchComplaintsForDate, fetchMonthAggregate, fetchComplaintsByType, fetchYearAggregate, getComplaintColor, getTopComplaintTypes } from './complaints';
+import type { DailyCount, MonthCount } from './complaints';
 import type { Complaint } from './complaints';
 import './RadarApp.css';
 
 const MAX_FEED = 50;
 const DOT_LIFETIME_MS = 10 * 60 * 1000;
 
-type ViewMode = 'radar' | 'day';
+type ViewMode = 'radar' | 'day' | 'trends';
 
 export default function App() {
   const [viewMode,        setViewMode]        = useState<ViewMode>('radar');
@@ -20,6 +21,15 @@ export default function App() {
   const [tooltip, setTooltip] = useState<{ type: string; count: number; totalInBar: number; barIdx: number; x: number; y: number } | null>(null);
   const [monthData, setMonthData] = useState<DailyCount[]>([]);
   const [monthLoading,    setMonthLoading]    = useState(false);
+
+  // Trends state
+  const [trendsYear,    setTrendsYear]    = useState(() => new Date().getFullYear());
+  const [trendsYearB,   setTrendsYearB]   = useState<number | null>(null);
+  const [trendsData,    setTrendsData]    = useState<MonthCount[]>([]);
+  const [trendsDataB,   setTrendsDataB]   = useState<MonthCount[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsShowAll, setTrendsShowAll] = useState(false);
+  const [trendsTypes,   setTrendsTypes]   = useState<string[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -105,12 +115,32 @@ export default function App() {
     }
   };
 
+  const loadTrends = useCallback(async (yr: number, yrB?: number | null) => {
+    setTrendsLoading(true);
+    try {
+      const [d, dB] = await Promise.all([
+        fetchYearAggregate(yr),
+        yrB != null ? fetchYearAggregate(yrB) : Promise.resolve([]),
+      ]);
+      setTrendsData(d);
+      if (yrB != null) setTrendsDataB(dB);
+      // Rank types by total volume across the year
+      const totals = new Map<string, number>();
+      for (const r of d) totals.set(r.complaint_type, (totals.get(r.complaint_type) ?? 0) + r.count);
+      setTrendsTypes([...totals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]));
+    } catch { /* ignore */ }
+    finally { setTrendsLoading(false); }
+  }, []);
+
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
     // Default to month view when switching to chart
     if (mode === 'day') {
       setChartResolution('month');
       if (monthData.length === 0 && selectedDate) loadMonth(selectedDate);
+    }
+    if (mode === 'trends' && trendsData.length === 0) {
+      loadTrends(trendsYear, trendsYearB);
     }
   };
 
@@ -247,12 +277,19 @@ export default function App() {
                 <circle cx="9" cy="9" r="1" fill="currentColor"/>
               </svg>
             </button>
-            <button className={`view-btn${viewMode !== 'radar' ? ' active' : ''}`}
+            <button className={`view-btn${viewMode === 'day' ? ' active' : ''}`}
               onClick={() => handleViewChange('day')} title="Chart view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 {[3,5,4,7,6,8,5,9,7,6,8,6].map((h, i) => (
                   <rect key={i} x={1 + i * 1.35} y={16 - h} width="1" height={h} fill="currentColor" opacity="0.85" rx="0.3"/>
                 ))}
+                <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
+              </svg>
+            </button>
+            <button className={`view-btn${viewMode === 'trends' ? ' active' : ''}`}
+              onClick={() => handleViewChange('trends')} title="Trends view">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <polyline points="1,14 5,9 8,11 12,5 17,4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                 <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
               </svg>
             </button>
@@ -430,6 +467,76 @@ export default function App() {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* TRENDS VIEW */}
+        {viewMode === 'trends' && (
+          <div className="view-column">
+            <div className="view-meta-float">
+              {trendsLoading ? 'LOADING…'
+                : `${trendsData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`}
+            </div>
+            <div className="chart-wrap">
+              {trendsLoading
+                ? <div className="chart-loading">LOADING {trendsYear}…</div>
+                : <TrendsChart
+                    data={trendsData}
+                    dataB={trendsYearB != null ? trendsDataB : undefined}
+                    year={trendsYear}
+                    yearB={trendsYearB ?? undefined}
+                    showAll={trendsShowAll}
+                    topTypes={trendsTypes}
+                  />
+              }
+            </div>
+            {/* Controls bar */}
+            <div className="view-controls">
+              {/* Col 1: top-8 / all toggle */}
+              <div className="vc-col vc-col--left">
+                <button className={`vc-toggle-btn${!trendsShowAll ? ' active' : ''}`}
+                  onClick={() => setTrendsShowAll(false)}>TOP 8</button>
+                <button className={`vc-toggle-btn${trendsShowAll ? ' active' : ''}`}
+                  onClick={() => setTrendsShowAll(true)}>ALL</button>
+              </div>
+              {/* Col 2: YoY compare toggle */}
+              <div className="vc-col vc-col--left">
+                <button
+                  className={`vc-toggle-btn${trendsYearB != null ? ' active' : ''}`}
+                  onClick={() => {
+                    if (trendsYearB != null) {
+                      setTrendsYearB(null);
+                      setTrendsDataB([]);
+                    } else {
+                      const yrB = trendsYear - 1;
+                      setTrendsYearB(yrB);
+                      loadTrends(trendsYear, yrB);
+                    }
+                  }}
+                  title="Compare with previous year"
+                >YoY</button>
+              </div>
+              {/* Col 3: year nav */}
+              <div className="vc-col vc-col--center">
+                <button className="vc-nav-btn" onClick={() => {
+                  const yr = trendsYear - 1;
+                  if (yr < 2020) return;
+                  setTrendsYear(yr);
+                  setTrendsData([]); setTrendsDataB([]);
+                  loadTrends(yr, trendsYearB != null ? yr - 1 : null);
+                  if (trendsYearB != null) setTrendsYearB(yr - 1);
+                }}>◀</button>
+                <span className="vc-date">{trendsYear}</span>
+                <button className="vc-nav-btn" onClick={() => {
+                  const yr = trendsYear + 1;
+                  if (yr > new Date().getFullYear()) return;
+                  setTrendsYear(yr);
+                  setTrendsData([]); setTrendsDataB([]);
+                  loadTrends(yr, trendsYearB != null ? yr - 1 : null);
+                  if (trendsYearB != null) setTrendsYearB(yr - 1);
+                }}>▶</button>
+              </div>
+            </div>
           </div>
         )}
       </div>

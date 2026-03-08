@@ -216,6 +216,38 @@ export function getStackOrder(typeTotals: Map<string, number>): string[] {
     .map(e => e[0]);
 }
 
+export interface MonthCount {
+  month: number;        // 0-based
+  complaint_type: string;
+  count: number;
+}
+
+/**
+ * Fetch monthly aggregates for a full year grouped by complaint type.
+ * Returns ~12×N rows (months × types). Fast — Socrata $group query.
+ */
+export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
+  const yearStart = `${year}-01-01`;
+  const yearEnd   = `${year + 1}-01-01`;
+
+  const qs = [
+    `$select=date_trunc_ym(created_date)+AS+month,complaint_type,count(*)+AS+cnt`,
+    `$where=created_date>='${yearStart}'AND+created_date<'${yearEnd}'`,
+    `$group=date_trunc_ym(created_date),complaint_type`,
+    `$order=month+ASC`,
+    `$limit=5000`,
+  ].join('&');
+
+  const res = await fetch(`/api/311?${qs}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`311 API ${res.status}`);
+  const raw: { month: string; complaint_type: string; cnt: string }[] = await res.json();
+  return raw.map(r => ({
+    month: new Date(r.month).getMonth(),
+    complaint_type: r.complaint_type,
+    count: parseInt(r.cnt, 10),
+  }));
+}
+
 export function getTopComplaintTypes(complaints: Complaint[], n = 12): string[] {
   const counts = new Map<string, number>();
   for (const c of complaints) {
