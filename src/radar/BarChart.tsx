@@ -203,7 +203,7 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode }: Pr
       const blocks  = blocksRef.current;
 
       // Interpolation factor [0,1]
-      let tAnim = 1; // default: fully at target
+      let tAnim = 1; // default: fully at target (used for axis label crossfade)
       let fromMode = chartMode;
       if (animRef.current) {
         const elapsed = ts - animRef.current.startTs;
@@ -219,7 +219,8 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode }: Pr
       ctx.font = LABEL_FONT;
       ctx.textAlign = 'right';
 
-      if (chartMode === 'stack' || (animRef.current && fromMode === 'time')) {
+      // Show count axis when in stack mode (or animating away from time — use tAnim for timing)
+      if (chartMode === 'stack' || (animRef.current !== null && fromMode === 'time' && tAnim < 1)) {
         // Count axis — 5 ticks
         for (let i = 0; i <= 4; i++) {
           const val = Math.round((yMax / 4) * i);
@@ -248,19 +249,24 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode }: Pr
       const totalMs    = ANIM_MS + STAGGER_MS;
 
       for (const b of blocks) {
-        // Per-bar stagger offset
-        const barFrac   = b.barIdx / Math.max(numBars - 1, 1);
-        let localT = tAnim;
-        if (animRef.current) {
-          const elapsed  = ts - animRef.current.startTs;
-          const staggerMs = barFrac * STAGGER_MS;
-          const localElapsed = Math.max(0, elapsed - staggerMs);
-          localT = easeOut(Math.min(localElapsed / (totalMs - STAGGER_MS), 1));
-        }
+        let interpT: number;
 
-        const interpT = chartMode === 'time'
-          ? (fromMode === 'stack' ? localT : 1 - localT)
-          : (fromMode === 'time'  ? 1 - localT : 0);
+        if (!animRef.current) {
+          // No animation in progress — sit at target position
+          interpT = chartMode === 'time' ? 1 : 0;
+        } else {
+          // Animating — apply per-bar stagger
+          const barFrac      = b.barIdx / Math.max(numBars - 1, 1);
+          const elapsed      = ts - animRef.current.startTs;
+          const staggerMs    = barFrac * STAGGER_MS;
+          const localElapsed = Math.max(0, elapsed - staggerMs);
+          const localT       = easeOut(Math.min(localElapsed / (totalMs - STAGGER_MS), 1));
+
+          // fromMode → chartMode: localT goes 0→1
+          // If going stack→time: interpT = localT (0=stack, 1=time)
+          // If going time→stack: interpT = 1 - localT (1=time, 0=stack)
+          interpT = fromMode === 'stack' ? localT : 1 - localT;
+        }
 
         const normY = b.stackY + (b.timeY - b.stackY) * interpT;
         const normH = b.height;
