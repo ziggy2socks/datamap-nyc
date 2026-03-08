@@ -352,11 +352,7 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode, onHo
       const axLabel = resolution === 'day' ? 'HOUR OF DAY' : 'DAY OF MONTH';
       ctx.fillText(axLabel, PAD_L + chartW / 2, H - 8);
 
-      // ── Total count
-      const total = blocks.length;
-      ctx.fillStyle = 'rgba(0,220,240,0.55)';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${total.toLocaleString()} REPORTS`, W - PAD_R, PAD_T - 10);
+      // Total rendered by view-meta-float overlay — not drawn here
 
       rafRef.current = requestAnimationFrame(render);
     }

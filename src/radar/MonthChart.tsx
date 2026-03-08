@@ -134,11 +134,7 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
     ctx.textAlign = 'center';
     ctx.fillText('DAY OF MONTH  ·  click segment to filter feed', PAD_L + chartW / 2, H - 8);
 
-    // Total
-    const total = totals.reduce((a, v) => a + v, 0);
-    ctx.fillStyle = 'rgba(0,220,240,0.55)';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${total.toLocaleString()} REPORTS`, W - PAD_R, PAD_T - 10);
+    // Total rendered by view-meta-float overlay — not drawn here
 
   }, [data, selectedDate]);
 

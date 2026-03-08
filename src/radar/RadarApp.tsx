@@ -362,10 +362,14 @@ export default function App() {
                   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                   barLabel = `${months[d2.getMonth()]} ${tooltip.barIdx + 1}`;
                 }
+                const typeColor = getComplaintColor(tooltip.type);
                 return (
-                  <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}>
+                  <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 8, borderColor: typeColor }}>
                     <div className="chart-tooltip-bar">{barLabel}</div>
-                    <div className="chart-tooltip-type">{tooltip.type}</div>
+                    <div className="chart-tooltip-type">
+                      <span className="chart-tooltip-dot" style={{ background: typeColor }} />
+                      {tooltip.type}
+                    </div>
                     <div className="chart-tooltip-count">{tooltip.count.toLocaleString()} <span className="chart-tooltip-of">/ {tooltip.totalInBar.toLocaleString()}</span></div>
                   </div>
                 );
