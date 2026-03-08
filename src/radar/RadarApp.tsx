@@ -64,6 +64,7 @@ export default function App() {
   const [replayTime, setReplayTime] = useState<number>(0);
   const [dataDate, setDataDate] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState('');
+  const [latestDataDate, setLatestDataDate] = useState(''); // true ceiling from API
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'feed' | 'filters'>('none');
@@ -106,6 +107,7 @@ export default function App() {
           return;
         }
         initializeData(data, date);
+        setLatestDataDate(date); // true ceiling — never navigate past this
       } catch (e) {
         setError('Failed to load 311 data');
         console.error(e);
@@ -122,7 +124,8 @@ export default function App() {
     const current = new Date(selectedDate + 'T12:00:00');
     current.setDate(current.getDate() + offset);
     const newDate = current.toISOString().split('T')[0];
-    if (newDate > maxDataDate()) return; // don't go into unavailable future
+    const ceiling = latestDataDate || maxDataDate();
+    if (newDate > ceiling) return; // don't go into unavailable future
     setLoading(true);
     setError(null);
     try {
@@ -390,8 +393,8 @@ export default function App() {
               <span className="vc-date">{dataDate}</span>
               <button className="vc-nav-btn"
                 onClick={() => switchDate(1)}
-                disabled={selectedDate >= maxDataDate()}
-                style={{ opacity: selectedDate >= maxDataDate() ? 0.25 : undefined }}>▶</button>
+                disabled={selectedDate >= (latestDataDate || maxDataDate())}
+                style={{ opacity: selectedDate >= (latestDataDate || maxDataDate()) ? 0.25 : undefined }}>▶</button>
             </div>
           </div>
         )}
@@ -506,7 +509,7 @@ export default function App() {
                       disabled={(() => {
                         const max = new Date(maxDataDate() + 'T12:00:00');
                         const cur = new Date(selectedDate + 'T12:00:00');
-                        if (chartResolution === 'day') return selectedDate >= maxDataDate();
+                        if (chartResolution === 'day') return selectedDate >= (latestDataDate || maxDataDate());
                         return cur.getFullYear() > max.getFullYear() ||
                           (cur.getFullYear() === max.getFullYear() && cur.getMonth() >= max.getMonth());
                       })()}
@@ -514,7 +517,7 @@ export default function App() {
                         const max = new Date(maxDataDate() + 'T12:00:00');
                         const cur = new Date(selectedDate + 'T12:00:00');
                         const atMax = chartResolution === 'day'
-                          ? selectedDate >= maxDataDate()
+                          ? selectedDate >= (latestDataDate || maxDataDate())
                           : cur.getFullYear() > max.getFullYear() ||
                             (cur.getFullYear() === max.getFullYear() && cur.getMonth() >= max.getMonth());
                         return atMax ? 0.25 : undefined;
