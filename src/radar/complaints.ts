@@ -23,61 +23,67 @@ export interface Complaint {
 
 // Distinct colors for top complaint types — spread across the full spectrum
 export const COMPLAINT_COLORS: Record<string, string> = {
-  // Parking / vehicles — yellows & ambers
-  'Illegal Parking':         '#ffe600',
-  'Blocked Driveway':        '#ffaa00',
-  'Abandoned Vehicle':       '#e6a800',
-  'Derelict Vehicle':        '#cc8800',
+  // ── Noise — warm spectrum, max internal contrast (2nd busiest category)
+  'Noise - Residential':          '#ff6b35',  // orange-red
+  'Noise - Street/Sidewalk':      '#ffa94d',  // amber
+  'Noise - Commercial':           '#ffe066',  // gold
+  'Noise - Vehicle':              '#c0eb75',  // lime
+  'Noise':                        '#96f2d7',  // mint
 
-  // Heat / water / plumbing — oranges & warm reds
-  'HEAT/HOT WATER':          '#ff6b35',
-  'WATER LEAK':              '#ff5522',
-  'PLUMBING':                '#e04830',
-  'Water System':            '#d4603a',
+  // ── Parking / vehicles — magenta/pink family
+  'Illegal Parking':              '#f06595',  // hot pink
+  'Blocked Driveway':             '#e64980',  // deep pink
+  'Abandoned Vehicle':            '#c2255c',  // rose
+  'Derelict Vehicles':            '#a61e4d',  // dark rose
+  'Derelict Vehicle':             '#a61e4d',
 
-  // Noise — cyans & teals
-  'Noise - Residential':     '#00ddff',
-  'Noise - Commercial':      '#00bbdd',
-  'Noise - Street/Sidewalk': '#009fbb',
-  'Noise - Vehicle':         '#00889e',
-  'Noise':                   '#00ccee',
+  // ── Heat / water / plumbing — red + blues (semantically hot vs cold)
+  'HEAT/HOT WATER':               '#ff4444',  // electric red
+  'WATER LEAK':                   '#74c0fc',  // sky blue
+  'Water System':                 '#4dabf7',  // blue
+  'PLUMBING':                     '#339af0',  // medium blue
+  'General Construction/Plumbing':'#1c7ed6',  // deep blue
 
-  // Streets / infrastructure — lime & green
-  'Street Condition':        '#88dd22',
-  'Traffic Signal Condition':'#66cc44',
-  'Street Light Condition':  '#44ee88',
-  'Sidewalk Condition':      '#22cc66',
-  'Sewer':                   '#33bb77',
+  // ── Building interior — purples/violets
+  'PAINT/PLASTER':                '#9775fa',  // periwinkle
+  'DOOR/WINDOW':                  '#7950f2',  // violet
+  'ELECTRIC':                     '#6741d9',  // deep violet
+  'FLOORING/STAIRS':              '#b197fc',  // lavender
+  'APPLIANCE':                    '#d0bfff',  // pale violet
+  'GENERAL':                      '#845ef7',  // medium violet
+  'Building/Use':                 '#5f3dc4',  // dark violet
 
-  // Building / interior — purples & magentas
-  'PAINT/PLASTER':           '#cc66ff',
-  'DOOR/WINDOW':             '#aa44ee',
-  'ELECTRIC':                '#dd55cc',
-  'FLOORING/STAIRS':         '#bb55dd',
-  'APPLIANCE':               '#9955cc',
-  'GENERAL':                 '#aa77dd',
-  'General Construction/Plumbing': '#9966cc',
+  // ── Sanitation — teals
+  'UNSANITARY CONDITION':         '#20c997',  // teal
+  'Dirty Condition':              '#38d9a9',  // light teal
+  'Illegal Dumping':              '#0ca678',  // dark teal
+  'Sanitation Condition':         '#099268',  // forest teal
+  'Missed Collection':            '#63e6be',  // pale teal
+  'Rodent':                       '#087f5b',  // deep green
 
-  // Sanitation — pinks & roses
-  'UNSANITARY CONDITION':    '#ff5599',
-  'Dirty Condition':         '#ff77aa',
-  'Illegal Dumping':         '#ee4488',
-  'Sanitation Condition':    '#ff6699',
-  'Rodent':                  '#ff3366',
-  'Graffiti':                '#ff44bb',
+  // ── Streets / infrastructure — greens
+  'Street Condition':             '#a9e34b',  // bright lime
+  'Traffic Signal Condition':     '#74b816',  // olive green
+  'Street Light Condition':       '#5c940d',  // dark green
+  'Sidewalk Condition':           '#d8f5a2',  // pale lime
+  'Sewer':                        '#66a80f',  // medium green
 
-  // Trees / nature — bright greens
-  'Damaged Tree':            '#00ff88',
-  'Dead/Dying Tree':         '#33ff77',
-  'Overgrown Tree/Branches': '#55ff66',
+  // ── Trees / nature — distinct bright greens
+  'Damaged Tree':                 '#00e676',  // neon green
+  'Dead/Dying Tree':              '#69db7c',  // soft green
+  'Overgrown Tree/Branches':      '#b2f2bb',  // pale green
 
-  // People — blues
-  'Homeless Person Assistance': '#4499ff',
-  'Encampment':              '#5577ff',
-  'Drug Activity':           '#7755ff',
+  // ── Homelessness / people — purples
+  'Encampment':                   '#cc5de8',  // bright purple
+  'Homeless Person Assistance':   '#ae3ec9',  // medium purple
+  'Drug Activity':                '#862e9c',  // dark purple
 
-  // Other
-  'Building/Use':            '#66bbff',
+  // ── Graffiti / quality of life — cyans (kept for visual variety)
+  'Graffiti':                     '#22d3ee',  // bright cyan
+  'Disorderly Youth':             '#06b6d4',  // medium cyan
+
+  // ── Catch-all
+  'GENERAL CONSTRUCTION':         '#94a3b8',  // slate
 };
 
 export const DEFAULT_COLOR = '#00ccff';

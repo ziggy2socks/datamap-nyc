@@ -24,11 +24,15 @@ function maxDataYear(): number {
   return new Date(maxDataDate()).getFullYear();
 }
 function maxDataMonth(year: number): number {
-  // For current data year, cap at the latest available month; past years = 11
-  const max = new Date(maxDataDate());
-  if (year < max.getFullYear()) return 11;
-  if (year > max.getFullYear()) return -1; // no data
-  return max.getMonth();
+  // Cap at last COMPLETE month — partial current month looks like a dive to zero
+  const now = new Date();
+  const currentYear  = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0-based
+  if (year < currentYear) return 11;
+  if (year > currentYear) return -1;
+  // Current year: last complete month is currentMonth - 1
+  // (January of current year = month 0, so if it's March we show Jan+Feb only)
+  return Math.max(currentMonth - 1, 0);
 }
 
 type ViewMode = 'radar' | 'day' | 'trends';
