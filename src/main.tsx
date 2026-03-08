@@ -11,10 +11,10 @@ async function render() {
     const mod = await import('./radar/RadarApp');
     Component = mod.default;
   } else if (path.startsWith('/suitability')) {
-    const mod = await import('./App');
+    const mod = await import('./SuitabilityMap');
     Component = mod.default;
   } else if (path.startsWith('/permits')) {
-    const mod = await import('./PermitMap');
+    const mod = await import('./permits/PermitsApp');
     Component = mod.default;
   } else {
     const mod = await import('./Landing');

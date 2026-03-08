@@ -27,6 +27,15 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/311/, '/erm2-nwe9.json'),
       },
+      '/dzi': {
+        target: 'https://isometric-nyc-tiles.cannoneyed.com',
+        changeOrigin: true,
+      },
+      '/api/adsb': {
+        target: 'https://api.adsb.lol/v2',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/adsb/, ''),
+      },
     },
   },
   optimizeDeps: {
