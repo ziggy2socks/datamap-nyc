@@ -155,11 +155,12 @@ function nycYesterday(daysBack: number): string {
  * complete day, then fetches only that day's full data.
  */
 export async function fetchComplaints(): Promise<{ data: Complaint[]; date: string }> {
-  // Check up to 3 days back to find a complete dataset
+  // Always prefer yesterday — use it if it has any data at all.
+  // Only fall further back if yesterday is truly empty (upload not yet run).
   for (let i = 1; i <= 3; i++) {
     const dateStr = nycYesterday(i);
     const count = await countForDate(dateStr);
-    if (count >= 500) {
+    if (count > 0) {
       const data = await fetchComplaintsForDate(dateStr);
       return { data, date: dateStr };
     }
