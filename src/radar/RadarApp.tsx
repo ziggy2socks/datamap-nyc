@@ -107,6 +107,11 @@ export default function App() {
 
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
+    // Default to month view when switching to chart
+    if (mode === 'day') {
+      setChartResolution('month');
+      if (monthData.length === 0 && selectedDate) loadMonth(selectedDate);
+    }
   };
 
   // Fetch aggregated month data (fast — ~600 rows via $group)
@@ -293,7 +298,7 @@ export default function App() {
           <div className="view-column">
             {/* Floating meta — top right of canvas area */}
             <div className="view-meta-float">
-              {loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS · ${timeStr} ET`}
+              {loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
             </div>
             <RadarCanvas
               complaints={filteredComplaints}

@@ -269,22 +269,23 @@ html, body, #root {
 .vc-col--center { justify-content: center; }
 .vc-col--right  { justify-content: flex-end; }
 
-/* ── Stack/Time icon buttons ── */
+/* ── Stack/Time icon buttons — no border, just icon color ── */
 .vc-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  width: 28px;
   height: 28px;
   background: none;
-  border: 1px solid var(--border);
+  border: none;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: color 0.15s;
   padding: 0;
 }
-.vc-icon-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
-.vc-icon-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
+.vc-icon-btn svg { transform: rotate(90deg); }
+.vc-icon-btn:hover { color: var(--cyan); }
+.vc-icon-btn.active { color: var(--cyan); }
 
 .vc-nav-btn {
   font: bold 9px var(--font);
