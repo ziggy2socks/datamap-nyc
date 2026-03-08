@@ -226,26 +226,41 @@ export interface MonthCount {
  * Fetch monthly aggregates for a full year grouped by complaint type.
  * Returns ~12×N rows (months × types). Fast — Socrata $group query.
  */
-const YEAR_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+const YEAR_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours — for current year static file
 
 export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
-  // Check localStorage cache first
+  const isCurrentYear = year === new Date().getFullYear();
+
+  // 1. Try static pre-built file (fast — Vercel CDN, <100ms)
+  try {
+    const res = await fetch(`/data/311_year_${year}.json`, {
+      cache: isCurrentYear ? 'no-cache' : 'force-cache',
+    });
+    if (res.ok) {
+      const json: { year: number; generated: string; rows: { month: number; type: string; count: number }[] } = await res.json();
+      return json.rows.map(r => ({
+        month: r.month,
+        complaint_type: r.type,
+        count: r.count,
+      }));
+    }
+  } catch { /* static file not available yet — fall through to Socrata */ }
+
+  // 2. Fallback: fetch live from Socrata (slow ~20s, but always works)
+  //    Also check localStorage cache to avoid repeat slow fetches
   const cacheKey = `311_year_${year}`;
   try {
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       const { ts, data } = JSON.parse(cached);
-      const isCurrentYear = year === new Date().getFullYear();
-      // Current year: 12h TTL (data updates daily). Past years: permanent.
       if (!isCurrentYear || Date.now() - ts < YEAR_CACHE_TTL_MS) {
         return data as MonthCount[];
       }
     }
-  } catch { /* ignore localStorage errors */ }
+  } catch { /* ignore */ }
 
   const yearStart = `${year}-01-01`;
   const yearEnd   = `${year + 1}-01-01`;
-
   const qs = [
     `$select=date_trunc_ym(created_date)+AS+month,complaint_type,count(*)+AS+cnt`,
     `$where=created_date>='${yearStart}'AND+created_date<'${yearEnd}'`,
@@ -263,10 +278,9 @@ export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
     count: parseInt(r.cnt, 10),
   }));
 
-  // Cache it
   try {
     localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
-  } catch { /* storage full or private mode — ignore */ }
+  } catch { /* ignore */ }
 
   return data;
 }
