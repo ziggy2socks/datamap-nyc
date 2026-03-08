@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { RadarCanvas } from './RadarCanvas';
 import { BarChart } from './BarChart';
-import { fetchComplaints, fetchComplaintsForDate, getComplaintColor, getTopComplaintTypes } from './complaints';
+import type { ChartMode } from './BarChart';
+import { fetchComplaints, fetchComplaintsForDate, fetchComplaintsForMonth, getComplaintColor, getTopComplaintTypes } from './complaints';
 import type { Complaint } from './complaints';
 import './RadarApp.css';
 
@@ -11,7 +12,11 @@ const DOT_LIFETIME_MS = 10 * 60 * 1000;
 type ViewMode = 'radar' | 'day';
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('radar');
+  const [viewMode,        setViewMode]        = useState<ViewMode>('radar');
+  const [chartResolution, setChartResolution] = useState<'day' | 'month'>('day');
+  const [chartMode,       setChartMode]       = useState<ChartMode>('stack');
+  const [monthComplaints, setMonthComplaints] = useState<Complaint[]>([]);
+  const [monthLoading,    setMonthLoading]    = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -101,6 +106,36 @@ export default function App() {
     setViewMode(mode);
   };
 
+  // Fetch a month of data (lazy, cached per selectedDate's month)
+  const loadMonth = useCallback(async (date: string) => {
+    setMonthLoading(true);
+    try {
+      const data = await fetchComplaintsForMonth(date);
+      setMonthComplaints(data);
+    } catch { /* ignore */ }
+    finally { setMonthLoading(false); }
+  }, []);
+
+  const handleChartResolution = (res: 'day' | 'month') => {
+    setChartResolution(res);
+    if (res === 'month' && monthComplaints.length === 0 && selectedDate) {
+      loadMonth(selectedDate);
+    }
+  };
+
+  // Navigate by month (for month chart)
+  const switchMonth = async (offset: number) => {
+    if (!selectedDate) return;
+    const d = new Date(selectedDate + 'T12:00:00');
+    d.setMonth(d.getMonth() + offset);
+    const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    setMonthComplaints([]);
+    setSelectedDate(newDate);
+    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    setDataDate(`${months[d.getMonth()]} ${d.getFullYear()}`);
+    loadMonth(newDate);
+  };
+
   // Replay clock — always 1× real time
   useEffect(() => {
     let raf: number;
@@ -173,17 +208,33 @@ export default function App() {
         <div className="sidebar-header">
           <div className="title">NYC 311 RADAR</div>
           <div className="subtitle">COMPLAINT SCANNER</div>
+          {/* Date nav — steps by day in radar/day mode, by month in month mode */}
           <div className="replay-info">
             <div className="replay-date-row">
-              <button className="date-nav" onClick={() => switchDate(-1)}>◀</button>
+              <button className="date-nav"
+                onClick={() => chartResolution === 'month' && viewMode !== 'radar' ? switchMonth(-1) : switchDate(-1)}>◀</button>
               <span className="replay-date">{dataDate}</span>
-              <button className="date-nav" onClick={() => switchDate(1)}>▶</button>
+              <button className="date-nav"
+                onClick={() => chartResolution === 'month' && viewMode !== 'radar' ? switchMonth(1) : switchDate(1)}>▶</button>
             </div>
-            <div className="replay-time">{timeStr} ET</div>
-            <div className="replay-delay">24H DELAY</div>
+            {/* In chart mode: show DAY|MONTH sub-toggle instead of clock */}
+            {viewMode === 'radar' ? (
+              <>
+                <div className="replay-time">{timeStr} ET</div>
+                <div className="replay-delay">24H DELAY</div>
+              </>
+            ) : (
+              <div className="chart-res-toggle">
+                <button className={`chart-res-btn${chartResolution === 'day' ? ' active' : ''}`}
+                  onClick={() => handleChartResolution('day')}>DAY</button>
+                <button className={`chart-res-btn${chartResolution === 'month' ? ' active' : ''}`}
+                  onClick={() => handleChartResolution('month')}>MONTH</button>
+              </div>
+            )}
           </div>
+
+          {/* Main view toggle: RADAR | CHART icons */}
           <div className="view-toggle">
-            {/* Radar icon */}
             <button className={`view-btn${viewMode === 'radar' ? ' active' : ''}`}
               onClick={() => handleViewChange('radar')} title="Radar view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -194,9 +245,8 @@ export default function App() {
                 <circle cx="9" cy="9" r="1" fill="currentColor"/>
               </svg>
             </button>
-            {/* Bar chart icon */}
-            <button className={`view-btn${viewMode === 'day' ? ' active' : ''}`}
-              onClick={() => handleViewChange('day')} title="24h bar chart">
+            <button className={`view-btn${viewMode !== 'radar' ? ' active' : ''}`}
+              onClick={() => handleViewChange('day')} title="Bar chart">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 {[3,5,4,7,6,8,5,9,7,6,8,6].map((h, i) => (
                   <rect key={i} x={1 + i * 1.35} y={16 - h} width="1" height={h} fill="currentColor" opacity="0.85" rx="0.3"/>
@@ -205,10 +255,20 @@ export default function App() {
               </svg>
             </button>
           </div>
+
+          {/* In chart mode: STACK | TIME sub-toggle */}
+          {viewMode !== 'radar' && (
+            <div className="chart-mode-toggle">
+              <button className={`chart-mode-btn${chartMode === 'stack' ? ' active' : ''}`}
+                onClick={() => setChartMode('stack')} title="Stack by type">STACK</button>
+              <button className={`chart-mode-btn${chartMode === 'time' ? ' active' : ''}`}
+                onClick={() => setChartMode('time')} title="Position by timestamp">TIME</button>
+            </div>
+          )}
           <div className="meta">
             {loading ? 'LOADING…'
-              : viewMode === 'day'
-              ? `${filteredComplaints.length.toLocaleString()} REPORTS`
+              : viewMode !== 'radar'
+              ? `${(chartResolution === 'month' ? monthComplaints : filteredComplaints).length.toLocaleString()} REPORTS`
               : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
           </div>
         </div>
@@ -255,13 +315,19 @@ export default function App() {
             hoveredKey={hoveredKey || expandedKey}
           />
         )}
-        {viewMode === 'day' && (
+        {viewMode !== 'radar' && (
           <div className="chart-wrap">
-            <BarChart
-              complaints={filteredComplaints}
-              mode="day"
-              selectedDate={selectedDate}
-            />
+            {monthLoading && chartResolution === 'month' && (
+              <div className="chart-loading">LOADING MONTH…</div>
+            )}
+            {!(monthLoading && chartResolution === 'month') && (
+              <BarChart
+                complaints={chartResolution === 'month' ? monthComplaints : filteredComplaints}
+                resolution={chartResolution}
+                selectedDate={selectedDate}
+                chartMode={chartMode}
+              />
+            )}
           </div>
         )}
       </div>

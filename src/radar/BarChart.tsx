@@ -1,152 +1,325 @@
+/**
+ * BarChart — stacked bar chart for 311 data with two view modes:
+ *   'stack' — y-axis = count, stacked by complaint type (consistent global order)
+ *   'time'  — y-axis = minute within hour (0–59), each ticket at its actual timestamp
+ *
+ * Transitions between modes are animated via canvas interpolation.
+ */
 import { useEffect, useRef } from 'react';
 import type { Complaint } from './complaints';
 import { getComplaintColor } from './complaints';
 
+export type ChartMode = 'stack' | 'time';
+
 interface Props {
   complaints: Complaint[];
-  mode: 'day' | 'month';
-  selectedDate: string; // YYYY-MM-DD
+  resolution: 'day' | 'month';
+  selectedDate: string;
+  chartMode: ChartMode;
 }
 
-const FONT = "700 11px 'Courier New', monospace";
+const FONT       = "700 11px 'Courier New', monospace";
 const LABEL_FONT = "600 10px 'Courier New', monospace";
 const PAD_L = 58;
 const PAD_R = 28;
 const PAD_T = 32;
 const PAD_B = 56;
 
-export function BarChart({ complaints, mode, selectedDate }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+// Easing — cubic out (fast start, eases to stop)
+function easeOut(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// A single rendered "block" — one complaint in one bar
+interface Block {
+  barIdx: number;
+  color: string;
+  // Normalised Y position in [0,1] within the chart height (0=bottom,1=top)
+  stackY: number;   // y in stack mode
+  timeY:  number;   // y in time mode
+  height: number;   // normalised height
+}
+
+function buildBlocks(
+  complaints: Complaint[],
+  numBars: number,
+  resolution: 'day' | 'month',
+): { blocks: Block[]; yMax: number } {
+  // ── Global type order (most frequent on bottom in stack mode)
+  const typeTotals = new Map<string, number>();
+  for (const c of complaints) typeTotals.set(c.complaint_type, (typeTotals.get(c.complaint_type) ?? 0) + 1);
+  const typeOrder = [...typeTotals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+
+  // ── Bucket by bar
+  const barBuckets: { type: string; minute: number; color: string }[][] =
+    Array.from({ length: numBars }, () => []);
+
+  for (const c of complaints) {
+    const d = new Date(c.created_date);
+    const barIdx = resolution === 'day' ? d.getHours() : d.getDate() - 1;
+    if (barIdx < 0 || barIdx >= numBars) continue;
+    const minute = d.getMinutes();
+    barBuckets[barIdx].push({ type: c.complaint_type, minute, color: getComplaintColor(c.complaint_type) });
+  }
+
+  // ── Stack mode: compute Y positions from stacked count layout
+  const rawMax = Math.max(...barBuckets.map(b => b.length), 1);
+  const yMax = niceMax(rawMax);
+
+  const blocks: Block[] = [];
+
+  for (let i = 0; i < numBars; i++) {
+    const bucket = barBuckets[i];
+    if (bucket.length === 0) continue;
+    const BLOCK_H = 1 / yMax; // normalised height per complaint
+
+    // ── Stack mode Y: group by type in global order, stack bottom-up
+    const byType = new Map<string, typeof bucket>();
+    for (const item of bucket) {
+      if (!byType.has(item.type)) byType.set(item.type, []);
+      byType.get(item.type)!.push(item);
+    }
+    const stackItems: { item: (typeof bucket)[0]; stackY: number }[] = [];
+    let cursor = 0;
+    for (const type of typeOrder) {
+      const group = byType.get(type) ?? [];
+      for (const item of group) {
+        stackItems.push({ item, stackY: cursor * BLOCK_H });
+        cursor++;
+      }
+    }
+
+    // ── Time mode Y: place by minute, resolve collisions upward
+    // Sort by minute ASC — items at same minute stack upward from that position
+    const timeItems = [...bucket].sort((a, b) => a.minute - b.minute);
+    // Raw Y = minute/60 (0=bottom at min 0, top at min 59)
+    const rawY = timeItems.map(item => item.minute / 60);
+    // Resolve: if items overlap (each occupies BLOCK_H), nudge upward
+    const resolvedY = [...rawY];
+    for (let j = 1; j < resolvedY.length; j++) {
+      const minY = resolvedY[j - 1] + BLOCK_H;
+      if (resolvedY[j] < minY) resolvedY[j] = minY;
+    }
+    // If stack overflows 1.0, compress the top items downward proportionally
+    const topY = resolvedY[resolvedY.length - 1] + BLOCK_H;
+    if (topY > 1.0) {
+      const overflow = topY - 1.0;
+      const scale = (1.0 - rawY[0]) / (topY - rawY[0]);
+      for (let j = 0; j < resolvedY.length; j++) {
+        resolvedY[j] = rawY[0] + (resolvedY[j] - rawY[0]) * scale;
+      }
+      void overflow; // suppress unused
+    }
+
+    // ── Build Block entries (match stackItems order with timeItems by sorting together)
+    // Stack order: typeOrder groups. Time order: sorted by minute.
+    // For animation we need a stable pairing — pair by index within a type group.
+    // Strategy: for each type, pair stack positions with time positions sorted by minute.
+    const typeStackMap = new Map<string, number[]>(); // type → array of stackY values
+    for (const { item, stackY } of stackItems) {
+      if (!typeStackMap.has(item.type)) typeStackMap.set(item.type, []);
+      typeStackMap.get(item.type)!.push(stackY);
+    }
+    const typeTimePosMap = new Map<string, number[]>(); // type → sorted resolvedY values
+    for (let j = 0; j < timeItems.length; j++) {
+      const t = timeItems[j].type;
+      if (!typeTimePosMap.has(t)) typeTimePosMap.set(t, []);
+      typeTimePosMap.get(t)!.push(resolvedY[j]);
+    }
+
+    // Now emit blocks: for each type in global order, zip stack and time positions
+    for (const type of typeOrder) {
+      const sYs = typeStackMap.get(type) ?? [];
+      const tYs = typeTimePosMap.get(type) ?? [];
+      const color = getComplaintColor(type);
+      const n = Math.min(sYs.length, tYs.length);
+      for (let k = 0; k < n; k++) {
+        blocks.push({
+          barIdx: i,
+          color,
+          stackY: sYs[k],
+          timeY:  tYs[k],
+          height: BLOCK_H,
+        });
+      }
+    }
+  }
+
+  return { blocks, yMax };
+}
+
+export function BarChart({ complaints, resolution, selectedDate, chartMode }: Props) {
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const rafRef       = useRef(0);
+  const animRef      = useRef<{ from: ChartMode; startTs: number } | null>(null);
+  const prevModeRef  = useRef<ChartMode>(chartMode);
+  const blocksRef    = useRef<Block[]>([]);
+  const yMaxRef      = useRef(1);
+
+  // Recompute blocks when data changes
+  useEffect(() => {
+    const numBars = resolution === 'day' ? 24 : getDaysInMonth(selectedDate);
+    const { blocks, yMax } = buildBlocks(complaints, numBars, resolution);
+    blocksRef.current = blocks;
+    yMaxRef.current   = yMax;
+  }, [complaints, resolution, selectedDate]);
+
+  // Trigger animation when chartMode changes
+  useEffect(() => {
+    if (chartMode !== prevModeRef.current) {
+      animRef.current = { from: prevModeRef.current, startTs: performance.now() };
+      prevModeRef.current = chartMode;
+    }
+  }, [chartMode]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas    = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const W = container.clientWidth || 600;
-    const H = container.clientHeight || 400;
-    canvas.width = W;
-    canvas.height = H;
+    const ANIM_MS = 700;
 
-    const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, W, H);
+    function render(ts: number) {
+      const W = container!.clientWidth  || 600;
+      const H = container!.clientHeight || 400;
+      if (canvas!.width !== W || canvas!.height !== H) {
+        canvas!.width  = W;
+        canvas!.height = H;
+      }
 
-    // Background
-    ctx.fillStyle = '#010408';
-    ctx.fillRect(0, 0, W, H);
+      const ctx = canvas!.getContext('2d')!;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#010408';
+      ctx.fillRect(0, 0, W, H);
 
-    const numBars = mode === 'day' ? 24 : getDaysInMonth(selectedDate);
-    const chartW = W - PAD_L - PAD_R;
-    const chartH = H - PAD_T - PAD_B;
+      const numBars = resolution === 'day' ? 24 : getDaysInMonth(selectedDate);
+      const chartW  = W - PAD_L - PAD_R;
+      const chartH  = H - PAD_T - PAD_B;
+      const slotW   = chartW / numBars;
+      const barW    = slotW * 0.52;
+      const barOff  = (slotW - barW) / 2;
+      const yMax    = yMaxRef.current;
+      const blocks  = blocksRef.current;
 
-    // ── Step 1: compute global type order (by total volume across all bars)
-    // This gives consistent stacking — same color always in same vertical lane
-    const typeTotals = new Map<string, number>();
-    for (const c of complaints) {
-      const t = c.complaint_type;
-      typeTotals.set(t, (typeTotals.get(t) ?? 0) + 1);
-    }
-    // Ordered: most frequent first (bottom of stack)
-    const typeOrder = [...typeTotals.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(e => e[0]);
+      // Interpolation factor [0,1]
+      let tAnim = 1; // default: fully at target
+      let fromMode = chartMode;
+      if (animRef.current) {
+        const elapsed = ts - animRef.current.startTs;
+        const raw = elapsed / ANIM_MS;
+        if (raw >= 1) {
+          animRef.current = null;
+        } else {
+          tAnim    = easeOut(raw);
+          fromMode = animRef.current.from;
+        }
+      }
+      // ── Y-axis grid + labels
+      ctx.font = LABEL_FONT;
+      ctx.textAlign = 'right';
 
-    // ── Step 2: bucket by bar index, keyed by type name
-    const buckets: Map<string, number>[] = Array.from({ length: numBars }, () => new Map());
-    for (const c of complaints) {
-      const d = new Date(c.created_date);
-      const idx = mode === 'day' ? d.getHours() : d.getDate() - 1;
-      if (idx < 0 || idx >= numBars) continue;
-      buckets[idx].set(c.complaint_type, (buckets[idx].get(c.complaint_type) ?? 0) + 1);
-    }
+      if (chartMode === 'stack' || (animRef.current && fromMode === 'time')) {
+        // Count axis — 5 ticks
+        for (let i = 0; i <= 4; i++) {
+          const val = Math.round((yMax / 4) * i);
+          const y   = PAD_T + chartH - (val / yMax) * chartH;
+          ctx.strokeStyle = i === 0 ? 'rgba(0,200,220,0.25)' : 'rgba(0,200,220,0.18)';
+          ctx.lineWidth   = i === 0 ? 1 : 0.75;
+          ctx.beginPath(); ctx.moveTo(PAD_L - 4, y); ctx.lineTo(W - PAD_R, y); ctx.stroke();
+          ctx.fillStyle = 'rgba(0,210,230,0.65)';
+          ctx.fillText(val.toLocaleString(), PAD_L - 8, y + 4);
+        }
+      } else {
+        // Time axis — every 15 min (0, 15, 30, 45)
+        for (const min of [0, 15, 30, 45, 60]) {
+          const y = PAD_T + chartH - (min / 60) * chartH;
+          ctx.strokeStyle = min === 0 ? 'rgba(0,200,220,0.25)' : 'rgba(0,200,220,0.18)';
+          ctx.lineWidth   = min === 0 ? 1 : 0.75;
+          ctx.beginPath(); ctx.moveTo(PAD_L - 4, y); ctx.lineTo(W - PAD_R, y); ctx.stroke();
+          ctx.fillStyle = 'rgba(0,210,230,0.65)';
+          if (min < 60) ctx.fillText(`:${String(min).padStart(2,'0')}`, PAD_L - 8, y + 4);
+        }
+      }
 
-    const totals = buckets.map(b => [...b.values()].reduce((a, v) => a + v, 0));
-    const maxTotal = Math.max(...totals, 1);
-    const yMax = niceMax(maxTotal);
-    const yTicks = 4;
+      // ── Bars: interpolate Y between stack and time positions
+      // Stagger: bar 0 leads by 0ms, bar N-1 lags by STAGGER_MS
+      const STAGGER_MS = 120;
+      const totalMs    = ANIM_MS + STAGGER_MS;
 
-    // Bar geometry — narrower bars with more breathing room
-    const slotW = chartW / numBars;
-    const barW = slotW * 0.52;
-    const barOffset = (slotW - barW) / 2;
+      for (const b of blocks) {
+        // Per-bar stagger offset
+        const barFrac   = b.barIdx / Math.max(numBars - 1, 1);
+        let localT = tAnim;
+        if (animRef.current) {
+          const elapsed  = ts - animRef.current.startTs;
+          const staggerMs = barFrac * STAGGER_MS;
+          const localElapsed = Math.max(0, elapsed - staggerMs);
+          localT = easeOut(Math.min(localElapsed / (totalMs - STAGGER_MS), 1));
+        }
 
-    // ── Y-axis grid + labels
-    ctx.font = LABEL_FONT;
-    ctx.textAlign = 'right';
-    for (let i = 0; i <= yTicks; i++) {
-      const val = Math.round((yMax / yTicks) * i);
-      const y = PAD_T + chartH - (val / yMax) * chartH;
-      ctx.strokeStyle = i === 0 ? 'rgba(0,200,220,0.25)' : 'rgba(0,200,220,0.18)';
-      ctx.lineWidth = i === 0 ? 1 : 0.75;
-      ctx.beginPath();
-      ctx.moveTo(PAD_L - 4, y);
-      ctx.lineTo(W - PAD_R, y);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(0,210,230,0.65)';
-      ctx.fillText(val.toLocaleString(), PAD_L - 8, y + 4);
-    }
+        const interpT = chartMode === 'time'
+          ? (fromMode === 'stack' ? localT : 1 - localT)
+          : (fromMode === 'time'  ? 1 - localT : 0);
 
-    // ── Draw bars (consistent type order — bottom to top = highest to lowest volume globally)
-    for (let i = 0; i < numBars; i++) {
-      const x = PAD_L + i * slotW + barOffset;
-      const bucket = buckets[i];
-      if ([...bucket.values()].reduce((a, v) => a + v, 0) === 0) continue;
+        const normY = b.stackY + (b.timeY - b.stackY) * interpT;
+        const normH = b.height;
 
-      let stackY = PAD_T + chartH; // start from baseline, go up
+        const x  = PAD_L + b.barIdx * slotW + barOff;
+        const y  = PAD_T + chartH - (normY + normH) * chartH;
+        const bh = normH * chartH;
 
-      // Draw in global type order (most frequent type at bottom)
-      for (const type of typeOrder) {
-        const count = bucket.get(type) ?? 0;
-        if (count === 0) continue;
-        const barH = (count / yMax) * chartH;
-        stackY -= barH;
-        const color = getComplaintColor(type);
+        if (bh < 0.3) continue;
 
         ctx.globalAlpha = 0.82;
-        ctx.fillStyle = color;
-        ctx.fillRect(x, stackY, barW, barH);
+        ctx.fillStyle   = b.color;
+        ctx.fillRect(x, y, barW, Math.max(bh, 0.5));
 
-        // Subtle top edge highlight
-        ctx.globalAlpha = 0.25;
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(x, stackY, barW, 0.8);
+        // Top edge highlight
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle   = '#fff';
+        ctx.fillRect(x, y, barW, 0.8);
       }
       ctx.globalAlpha = 1;
+
+      // ── Baseline
+      ctx.strokeStyle = 'rgba(0,200,220,0.2)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(PAD_L, PAD_T + chartH);
+      ctx.lineTo(W - PAD_R, PAD_T + chartH);
+      ctx.stroke();
+
+      // ── X-axis labels
+      ctx.font      = LABEL_FONT;
+      ctx.fillStyle = 'rgba(0,210,230,0.6)';
+      ctx.textAlign = 'center';
+      for (let i = 0; i < numBars; i++) {
+        const x     = PAD_L + i * slotW + slotW / 2;
+        const label = resolution === 'day' ? `${String(i).padStart(2,'0')}` : `${i + 1}`;
+        ctx.fillText(label, x, PAD_T + chartH + 16);
+      }
+
+      // ── Axis label
+      ctx.font      = FONT;
+      ctx.fillStyle = 'rgba(0,200,220,0.3)';
+      ctx.textAlign = 'center';
+      const axLabel = resolution === 'day' ? 'HOUR OF DAY' : 'DAY OF MONTH';
+      ctx.fillText(axLabel, PAD_L + chartW / 2, H - 8);
+
+      // ── Total count
+      const total = blocks.length;
+      ctx.fillStyle = 'rgba(0,220,240,0.55)';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${total.toLocaleString()} REPORTS`, W - PAD_R, PAD_T - 10);
+
+      rafRef.current = requestAnimationFrame(render);
     }
 
-    // ── X-axis baseline
-    ctx.strokeStyle = 'rgba(0,200,220,0.2)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PAD_L, PAD_T + chartH);
-    ctx.lineTo(W - PAD_R, PAD_T + chartH);
-    ctx.stroke();
-
-    // ── X-axis labels — every bar
-    ctx.font = LABEL_FONT;
-    ctx.fillStyle = 'rgba(0,210,230,0.6)';
-    ctx.textAlign = 'center';
-    for (let i = 0; i < numBars; i++) {
-      const x = PAD_L + i * slotW + slotW / 2;
-      const label = mode === 'day' ? `${String(i).padStart(2, '0')}` : `${i + 1}`;
-      ctx.fillText(label, x, PAD_T + chartH + 16);
-    }
-
-    // ── Axis label
-    ctx.font = FONT;
-    ctx.fillStyle = 'rgba(0,200,220,0.3)';
-    ctx.textAlign = 'center';
-    ctx.fillText(mode === 'day' ? 'HOUR OF DAY' : 'DAY OF MONTH', PAD_L + chartW / 2, H - 8);
-
-    // ── Total count + legend note top-right
-    const total = totals.reduce((a, v) => a + v, 0);
-    ctx.font = FONT;
-    ctx.fillStyle = 'rgba(0,220,240,0.55)';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${total.toLocaleString()} REPORTS`, W - PAD_R, PAD_T - 10);
-
-  }, [complaints, mode, selectedDate]);
+    rafRef.current = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(rafRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complaints, resolution, selectedDate, chartMode]);
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
@@ -162,7 +335,7 @@ function getDaysInMonth(dateStr: string): number {
 
 function niceMax(val: number): number {
   if (val <= 0) return 100;
-  const mag = Math.pow(10, Math.floor(Math.log10(val)));
+  const mag  = Math.pow(10, Math.floor(Math.log10(val)));
   const nice = [1, 2, 2.5, 5, 10];
   for (const n of nice) {
     const candidate = Math.ceil(val / (mag * n)) * (mag * n);

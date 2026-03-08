@@ -241,6 +241,46 @@ html, body, #root {
 .view-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .view-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
 
+/* ── Chart resolution (DAY | MONTH) toggle ── */
+.chart-res-toggle {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.chart-res-btn {
+  flex: 1;
+  font: 700 8px var(--font);
+  letter-spacing: 1.5px;
+  padding: 4px 0;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chart-res-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.chart-res-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
+
+/* ── Chart mode (STACK | TIME) toggle ── */
+.chart-mode-toggle {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.chart-mode-btn {
+  flex: 1;
+  font: 700 8px var(--font);
+  letter-spacing: 1.5px;
+  padding: 4px 0;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chart-mode-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.chart-mode-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
+
 /* ── Chart wrapper ── */
 .chart-wrap {
   position: relative;
