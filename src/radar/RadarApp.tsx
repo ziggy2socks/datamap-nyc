@@ -479,7 +479,7 @@ export default function App() {
             </div>
             <div className="chart-wrap">
               {trendsLoading
-                ? <div className="chart-loading">LOADING {trendsYear}…</div>
+                ? <div className="chart-loading">LOADING {trendsYear}… (first load ~20s, then cached)</div>
                 : <TrendsChart
                     data={trendsData}
                     dataB={trendsYearB != null ? trendsDataB : undefined}

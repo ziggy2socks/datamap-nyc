@@ -226,7 +226,23 @@ export interface MonthCount {
  * Fetch monthly aggregates for a full year grouped by complaint type.
  * Returns ~12×N rows (months × types). Fast — Socrata $group query.
  */
+const YEAR_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
 export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
+  // Check localStorage cache first
+  const cacheKey = `311_year_${year}`;
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const { ts, data } = JSON.parse(cached);
+      const isCurrentYear = year === new Date().getFullYear();
+      // Current year: 12h TTL (data updates daily). Past years: permanent.
+      if (!isCurrentYear || Date.now() - ts < YEAR_CACHE_TTL_MS) {
+        return data as MonthCount[];
+      }
+    }
+  } catch { /* ignore localStorage errors */ }
+
   const yearStart = `${year}-01-01`;
   const yearEnd   = `${year + 1}-01-01`;
 
@@ -241,11 +257,18 @@ export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
   const res = await fetch(`/api/311?${qs}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`311 API ${res.status}`);
   const raw: { month: string; complaint_type: string; cnt: string }[] = await res.json();
-  return raw.map(r => ({
+  const data: MonthCount[] = raw.map(r => ({
     month: new Date(r.month).getMonth(),
     complaint_type: r.complaint_type,
     count: parseInt(r.cnt, 10),
   }));
+
+  // Cache it
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
+  } catch { /* storage full or private mode — ignore */ }
+
+  return data;
 }
 
 export function getTopComplaintTypes(complaints: Complaint[], n = 12): string[] {
