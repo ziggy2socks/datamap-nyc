@@ -170,10 +170,9 @@ export default function App() {
 
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
-    // Default to month view when switching to chart
+    // Default to day view when switching to chart — matches the radar day you were on
     if (mode === 'day') {
-      setChartResolution('month');
-      if (monthData.length === 0 && selectedDate) loadMonth(selectedDate);
+      setChartResolution('day');
     }
     if (mode === 'trends' && trendsData.length === 0) {
       loadTrends(trendsYear, trendsShowYoY);
