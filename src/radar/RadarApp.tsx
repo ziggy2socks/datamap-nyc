@@ -357,7 +357,7 @@ export default function App() {
         )}
 
         {/* CHART VIEW */}
-        {viewMode !== 'radar' && (
+        {viewMode === 'day' && (
           <div className="view-column">
             {/* Floating meta — top right, same position as radar */}
             <div className="view-meta-float">

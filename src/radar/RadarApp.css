@@ -428,9 +428,10 @@ html, body, #root {
 
 /* ── Trends chart ── */
 .trends-wrap {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  position: relative;
 }
 .trends-canvas {
   width: 100%;
