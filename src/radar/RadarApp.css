@@ -374,7 +374,7 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: unset;
 }
 
@@ -383,7 +383,6 @@ html, body, #root {
   letter-spacing: 2px;
   color: var(--text-muted);
   flex-shrink: 0;
-  margin-right: 4px;
 }
 
 /* ── Chart tooltip ── */
@@ -655,18 +654,24 @@ html, body, #root {
   }
 
   .radar-canvas {
-    width: min(100vw - 16px, calc(100vh - 44px - 200px - 48px - 20px));
-    height: min(100vw - 16px, calc(100vh - 44px - 200px - 48px - 20px));
+    width: min(100vw - 32px, calc(100vh - 44px - 200px - 48px - 20px));
+    height: min(100vw - 32px, calc(100vh - 44px - 200px - 48px - 20px));
     margin-bottom: 0;
   }
 
-  /* Controls bar on mobile — col 1 left, col 2 left, col 3 right-ish */
+  /* Controls bar on mobile */
   .view-controls {
     grid-template-columns: auto auto 1fr;
     padding: 0 10px;
     gap: 4px;
   }
   .vc-col--center { justify-content: flex-end; }
+
+  /* Radar controls on mobile — keep time + nav as one tight unit */
+  .view-controls--radar {
+    justify-content: center;
+    gap: 8px;
+  }
 
   .view-meta-float {
     top: 6px;
