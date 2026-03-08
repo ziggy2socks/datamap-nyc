@@ -13,8 +13,9 @@ export type ChartMode = 'stack' | 'time';
 
 export interface ChartHit {
   type: string;
-  barIdx: number;
-  count: number;
+  barIdx: number;  // hour index (0-23) for day chart, day index (0-30) for month chart
+  count: number;   // count of this type in this bar
+  totalInBar: number; // total complaints in this bar across all types
 }
 
 interface Props {
@@ -29,7 +30,7 @@ interface Props {
 // Rendered region for hit-testing
 interface HitRegion {
   x: number; y: number; w: number; h: number;
-  type: string; barIdx: number; count: number;
+  type: string; barIdx: number; count: number; totalInBar: number;
 }
 
 const FONT       = "700 11px 'Courier New', monospace";
@@ -148,19 +149,22 @@ function buildBlocks(
       const sYs = typeStackMap.get(type) ?? [];
       const tYs = typeTimePosMap.get(type) ?? [];
       const color = getComplaintColor(type);
+      const typeCount = bucket.filter(b => b.type === type).length;
       const n = Math.min(sYs.length, tYs.length);
       for (let k = 0; k < n; k++) {
         blocks.push({
           barIdx: i,
           color,
           type,
-          count: 1,
+          count: typeCount,
           stackY: sYs[k],
           timeY:  tYs[k],
           height: BLOCK_H,
         });
       }
     }
+
+
   }
 
   return { blocks, yMax };
@@ -268,6 +272,15 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode, onHo
       const totalMs    = ANIM_MS + STAGGER_MS;
       const newHitRegions: HitRegion[] = [];
 
+      // Pre-compute per-bar totals and per-bar-type counts for hit regions
+      const barTotals = new Map<number, number>(); // barIdx → total complaints
+      const barTypeCounts = new Map<string, number>(); // `${barIdx}:${type}` → count
+      for (const b of blocks) {
+        barTotals.set(b.barIdx, (barTotals.get(b.barIdx) ?? 0) + 1);
+        const k = `${b.barIdx}:${b.type}`;
+        barTypeCounts.set(k, (barTypeCounts.get(k) ?? 0) + 1);
+      }
+
       for (const b of blocks) {
         let interpT: number;
 
@@ -307,7 +320,9 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode, onHo
         ctx.fillRect(x, y, barW, 0.8);
 
         // Record hit region
-        newHitRegions.push({ x, y, w: barW, h: Math.max(bh, 2), type: b.type, barIdx: b.barIdx, count: b.count });
+        const typeCount = barTypeCounts.get(`${b.barIdx}:${b.type}`) ?? b.count;
+        const barTotal  = barTotals.get(b.barIdx) ?? 1;
+        newHitRegions.push({ x, y, w: barW, h: Math.max(bh, 2), type: b.type, barIdx: b.barIdx, count: typeCount, totalInBar: barTotal });
       }
       ctx.globalAlpha = 1;
       hitRegionsRef.current = newHitRegions;
@@ -364,7 +379,7 @@ export function BarChart({ complaints, resolution, selectedDate, chartMode, onHo
     for (let i = regions.length - 1; i >= 0; i--) {
       const r = regions[i];
       if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
-        return { type: r.type, barIdx: r.barIdx, count: r.count };
+        return { type: r.type, barIdx: r.barIdx, count: r.count, totalInBar: r.totalInBar };
       }
     }
     return null;

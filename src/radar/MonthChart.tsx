@@ -17,7 +17,7 @@ interface Props {
 
 interface HitRegion {
   x: number; y: number; w: number; h: number;
-  type: string; barIdx: number; count: number;
+  type: string; barIdx: number; count: number; totalInBar: number;
 }
 
 const FONT       = "700 11px 'Courier New', monospace";
@@ -105,7 +105,7 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
         ctx.globalAlpha = 0.2;
         ctx.fillStyle   = '#fff';
         ctx.fillRect(x, stackY, barW, 0.8);
-        newHits.push({ x, y: stackY, w: barW, h: Math.max(bh, 2), type, barIdx: i, count });
+        newHits.push({ x, y: stackY, w: barW, h: Math.max(bh, 2), type, barIdx: i, count, totalInBar: totals[i] });
       }
       ctx.globalAlpha = 1;
     }
@@ -154,7 +154,7 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
     for (let i = regions.length - 1; i >= 0; i--) {
       const r = regions[i];
       if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
-        return { type: r.type, barIdx: r.barIdx, count: r.count };
+        return { type: r.type, barIdx: r.barIdx, count: r.count, totalInBar: r.totalInBar };
     }
     return null;
   }, []);

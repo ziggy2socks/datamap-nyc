@@ -17,7 +17,7 @@ export default function App() {
   const [viewMode,        setViewMode]        = useState<ViewMode>('radar');
   const [chartResolution, setChartResolution] = useState<'day' | 'month'>('day');
   const [chartMode,       setChartMode]       = useState<ChartMode>('stack');
-  const [tooltip, setTooltip] = useState<{ type: string; count: number; x: number; y: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{ type: string; count: number; totalInBar: number; barIdx: number; x: number; y: number } | null>(null);
   const [monthData, setMonthData] = useState<DailyCount[]>([]);
   const [monthLoading,    setMonthLoading]    = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -342,7 +342,7 @@ export default function App() {
               <MonthChart
                 data={monthData}
                 selectedDate={selectedDate}
-                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, x, y } : null)}
+                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, totalInBar: hit.totalInBar, barIdx: hit.barIdx, x, y } : null)}
                 onSegmentClick={handleSegmentClick}
               />
             )}
@@ -352,17 +352,34 @@ export default function App() {
                 resolution="day"
                 selectedDate={selectedDate}
                 chartMode={chartMode}
-                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, x, y } : null)}
+                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, totalInBar: hit.totalInBar, barIdx: hit.barIdx, x, y } : null)}
                 onSegmentClick={handleSegmentClick}
               />
             )}
             {/* Tooltip */}
-            {tooltip && (
-              <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}>
-                <div className="chart-tooltip-type">{tooltip.type}</div>
-                <div className="chart-tooltip-count">{tooltip.count.toLocaleString()}</div>
-              </div>
-            )}
+            {tooltip && (() => {
+              // Bar label: "3AM–4AM" for day, "Mar 5" for month
+              let barLabel = '';
+              if (chartResolution === 'day') {
+                const h = tooltip.barIdx;
+                const suffix = h < 12 ? 'AM' : 'PM';
+                const h12 = h % 12 === 0 ? 12 : h % 12;
+                const h12next = (h + 1) % 12 === 0 ? 12 : (h + 1) % 12;
+                const suffixNext = (h + 1) < 12 ? 'AM' : 'PM';
+                barLabel = `${h12}${suffix}–${h12next}${suffixNext}`;
+              } else {
+                const d2 = new Date(selectedDate + 'T12:00:00');
+                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                barLabel = `${months[d2.getMonth()]} ${tooltip.barIdx + 1}`;
+              }
+              return (
+                <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}>
+                  <div className="chart-tooltip-bar">{barLabel}</div>
+                  <div className="chart-tooltip-type">{tooltip.type}</div>
+                  <div className="chart-tooltip-count">{tooltip.count.toLocaleString()} <span className="chart-tooltip-of">/ {tooltip.totalInBar.toLocaleString()}</span></div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
