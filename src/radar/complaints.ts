@@ -147,6 +147,26 @@ export async function fetchComplaints(): Promise<{ data: Complaint[]; date: stri
   return { data, date: fallbackDate };
 }
 
+/**
+ * Fetch a full month of complaints for chart view.
+ * Fetches from the 1st to the last day of the month containing dateStr.
+ * Limit 50000 — enough for a typical month.
+ */
+export async function fetchComplaintsForMonth(dateStr: string): Promise<Complaint[]> {
+  const d = new Date(dateStr + 'T12:00:00');
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const nextMonthStart = new Date(year, month + 1, 1).toISOString().split('T')[0];
+  const qs = `$where=created_date>='${monthStart}'+AND+created_date<'${nextMonthStart}'&$order=created_date+ASC&$limit=50000`;
+  const res = await fetch(`/api/311?${qs}`, { cache: 'no-store' });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`311 API error: ${res.status} — ${txt.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
 export function getTopComplaintTypes(complaints: Complaint[], n = 12): string[] {
   const counts = new Map<string, number>();
   for (const c of complaints) {

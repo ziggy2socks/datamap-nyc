@@ -1,18 +1,24 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { RadarCanvas } from './RadarCanvas';
-import { fetchComplaints, fetchComplaintsForDate, getComplaintColor, getTopComplaintTypes } from './complaints';
+import { BarChart } from './BarChart';
+import { fetchComplaints, fetchComplaintsForDate, fetchComplaintsForMonth, getComplaintColor, getTopComplaintTypes } from './complaints';
 import type { Complaint } from './complaints';
 import './RadarApp.css';
 
 const MAX_FEED = 50;
 const DOT_LIFETIME_MS = 10 * 60 * 1000;
 
+type ViewMode = 'radar' | 'day' | 'month';
+
 export default function App() {
+  const [viewMode, setViewMode] = useState<ViewMode>('radar');
   const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [monthComplaints, setMonthComplaints] = useState<Complaint[]>([]);
   const [topTypes, setTopTypes] = useState<string[]>([]);
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
   const [feed, setFeed] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [replayTime, setReplayTime] = useState<number>(0);
   const [dataDate, setDataDate] = useState<string>('');
@@ -88,6 +94,27 @@ export default function App() {
       setError('Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load month data when switching to month view
+  const loadMonth = useCallback(async (date: string) => {
+    if (!date) return;
+    setChartLoading(true);
+    try {
+      const data = await fetchComplaintsForMonth(date);
+      setMonthComplaints(data);
+    } catch (e) {
+      setError('Failed to load month data');
+    } finally {
+      setChartLoading(false);
+    }
+  }, []);
+
+  const handleViewChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === 'month' && monthComplaints.length === 0 && selectedDate) {
+      loadMonth(selectedDate);
     }
   };
 
@@ -172,8 +199,18 @@ export default function App() {
             <div className="replay-time">{timeStr} ET</div>
             <div className="replay-delay">24H DELAY</div>
           </div>
+          <div className="view-toggle">
+            {(['radar', 'day', 'month'] as ViewMode[]).map(m => (
+              <button key={m} className={`view-btn${viewMode === m ? ' active' : ''}`}
+                onClick={() => handleViewChange(m)}>
+                {m === 'radar' ? 'RADAR' : m === 'day' ? 'DAY' : 'MONTH'}
+              </button>
+            ))}
+          </div>
           <div className="meta">
-            {loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
+            {loading || chartLoading ? 'LOADING…' : viewMode === 'month'
+              ? `${monthComplaints.length.toLocaleString()} REPORTS`
+              : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
           </div>
         </div>
 
@@ -207,16 +244,30 @@ export default function App() {
         <div className="mobile-backdrop" onClick={() => setMobilePanel('none')} />
       )}
 
-      {/* ── Radar ── */}
+      {/* ── Main view (radar or chart) ── */}
       <div className="radar-wrap">
-        <RadarCanvas
-          complaints={filteredComplaints}
-          replayTime={replayTime}
-          dotLifetime={DOT_LIFETIME_MS}
-          onPing={handlePing}
-          onBatchLoad={handleBatchLoad}
-          hoveredKey={hoveredKey || expandedKey}
-        />
+        {viewMode === 'radar' && (
+          <RadarCanvas
+            complaints={filteredComplaints}
+            replayTime={replayTime}
+            dotLifetime={DOT_LIFETIME_MS}
+            onPing={handlePing}
+            onBatchLoad={handleBatchLoad}
+            hoveredKey={hoveredKey || expandedKey}
+          />
+        )}
+        {(viewMode === 'day' || viewMode === 'month') && (
+          <div className="chart-wrap">
+            {chartLoading && <div className="chart-loading">LOADING…</div>}
+            {!chartLoading && (
+              <BarChart
+                complaints={viewMode === 'month' ? monthComplaints : filteredComplaints}
+                mode={viewMode}
+                selectedDate={selectedDate}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Right feed (desktop) / persistent mini-feed (mobile) ── */}
