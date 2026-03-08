@@ -299,14 +299,16 @@ export default function App() {
             <div className="view-meta-float">
               {loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
             </div>
-            <RadarCanvas
-              complaints={filteredComplaints}
-              replayTime={replayTime}
-              dotLifetime={DOT_LIFETIME_MS}
-              onPing={handlePing}
-              onBatchLoad={handleBatchLoad}
-              hoveredKey={hoveredKey || expandedKey}
-            />
+            <div className="view-column-spacer">
+              <RadarCanvas
+                complaints={filteredComplaints}
+                replayTime={replayTime}
+                dotLifetime={DOT_LIFETIME_MS}
+                onPing={handlePing}
+                onBatchLoad={handleBatchLoad}
+                hoveredKey={hoveredKey || expandedKey}
+              />
+            </div>
             {/* Controls bar — live time + date nav */}
             <div className="view-controls view-controls--radar">
               <span className="vc-time">{timeStr}</span>
@@ -327,6 +329,7 @@ export default function App() {
                 ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
                 : `${filteredComplaints.length.toLocaleString()} REPORTS`}
             </div>
+            <div className="view-column-spacer">
             <div className="chart-wrap">
               {monthLoading && <div className="chart-loading">LOADING MONTH…</div>}
               {!monthLoading && chartResolution === 'month' && (
@@ -369,6 +372,7 @@ export default function App() {
                 );
               })()}
             </div>
+            </div>{/* end view-column-spacer */}
 
             {/* Controls bar — 3-column grid */}
             {(() => {
