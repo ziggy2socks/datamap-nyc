@@ -200,12 +200,37 @@ export default function App() {
             <div className="replay-delay">24H DELAY</div>
           </div>
           <div className="view-toggle">
-            {(['radar', 'day', 'month'] as ViewMode[]).map(m => (
-              <button key={m} className={`view-btn${viewMode === m ? ' active' : ''}`}
-                onClick={() => handleViewChange(m)}>
-                {m === 'radar' ? 'RADAR' : m === 'day' ? 'DAY' : 'MONTH'}
-              </button>
-            ))}
+            {/* Radar icon: concentric circles with sweep line */}
+            <button className={`view-btn${viewMode === 'radar' ? ' active' : ''}`}
+              onClick={() => handleViewChange('radar')} title="Radar view">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <circle cx="9" cy="9" r="7.5" stroke="currentColor" strokeWidth="0.8" opacity="0.5"/>
+                <circle cx="9" cy="9" r="5"   stroke="currentColor" strokeWidth="0.8" opacity="0.5"/>
+                <circle cx="9" cy="9" r="2.5" stroke="currentColor" strokeWidth="0.8" opacity="0.5"/>
+                <line x1="9" y1="9" x2="9" y2="1.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+                <circle cx="9" cy="9" r="1" fill="currentColor"/>
+              </svg>
+            </button>
+            {/* Day chart icon: 24-bar silhouette (varied heights) */}
+            <button className={`view-btn${viewMode === 'day' ? ' active' : ''}`}
+              onClick={() => handleViewChange('day')} title="Day chart (24h)">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                {[3,5,4,7,6,8,5,9,7,6,8,6].map((h, i) => (
+                  <rect key={i} x={1 + i * 1.35} y={16 - h} width="1" height={h} fill="currentColor" opacity="0.85" rx="0.3"/>
+                ))}
+                <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
+              </svg>
+            </button>
+            {/* Month chart icon: 30-bar silhouette (wider bars) */}
+            <button className={`view-btn${viewMode === 'month' ? ' active' : ''}`}
+              onClick={() => handleViewChange('month')} title="Month chart (30d)">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                {[3,5,7,6,8,9,7,6,8,5].map((h, i) => (
+                  <rect key={i} x={1 + i * 1.65} y={16 - h} width="1.3" height={h} fill="currentColor" opacity="0.85" rx="0.3"/>
+                ))}
+                <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
+              </svg>
+            </button>
           </div>
           <div className="meta">
             {loading || chartLoading ? 'LOADING…' : viewMode === 'month'

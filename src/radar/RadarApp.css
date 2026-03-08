@@ -228,9 +228,10 @@ html, body, #root {
 }
 .view-btn {
   flex: 1;
-  font: 700 8px var(--font);
-  letter-spacing: 1px;
-  padding: 5px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 0;
   background: none;
   border: 1px solid var(--border);
   color: var(--text-muted);
