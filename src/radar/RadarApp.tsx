@@ -230,26 +230,9 @@ export default function App() {
         <div className="sidebar-header">
           <div className="title">NYC 311 RADAR</div>
           <div className="subtitle">COMPLAINT SCANNER</div>
-          {/* Date nav — steps by day in radar/day mode, by month in month mode */}
-          <div className="replay-info">
-            <div className="replay-date-row">
-              <button className="date-nav"
-                onClick={() => chartResolution === 'month' && viewMode !== 'radar' ? switchMonth(-1) : switchDate(-1)}>◀</button>
-              <span className="replay-date">{dataDate}</span>
-              <button className="date-nav"
-                onClick={() => chartResolution === 'month' && viewMode !== 'radar' ? switchMonth(1) : switchDate(1)}>▶</button>
-            </div>
-            {viewMode === 'radar' && (
-              <>
-                <div className="replay-time">{timeStr} ET</div>
-                <div className="replay-delay">24H DELAY</div>
-              </>
-            )}
-          </div>
 
-          {/* View toggle row: radar icon | then text labels */}
+          {/* View toggle — only thing that stays in sidebar */}
           <div className="view-toggle">
-            {/* Radar icon */}
             <button className={`view-btn${viewMode === 'radar' ? ' active' : ''}`}
               onClick={() => handleViewChange('radar')} title="Radar view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -260,7 +243,6 @@ export default function App() {
                 <circle cx="9" cy="9" r="1" fill="currentColor"/>
               </svg>
             </button>
-            {/* Bar chart icon */}
             <button className={`view-btn${viewMode !== 'radar' ? ' active' : ''}`}
               onClick={() => handleViewChange('day')} title="Chart view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -270,26 +252,6 @@ export default function App() {
                 <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
               </svg>
             </button>
-          </div>
-
-          {/* Unified chart level toggle: MONTH | DAY | TIME (shown only in chart mode) */}
-          {viewMode !== 'radar' && (
-            <div className="chart-mode-toggle">
-              <button className={`chart-mode-btn${chartResolution === 'month' ? ' active' : ''}`}
-                onClick={() => handleChartResolution('month')}>MONTH</button>
-              <button className={`chart-mode-btn${chartResolution === 'day' && chartMode === 'stack' ? ' active' : ''}`}
-                onClick={() => { handleChartResolution('day'); setChartMode('stack'); }}>DAY</button>
-              <button className={`chart-mode-btn${chartResolution === 'day' && chartMode === 'time' ? ' active' : ''}`}
-                onClick={() => { handleChartResolution('day'); setChartMode('time'); }}>TIME</button>
-            </div>
-          )}
-          <div className="meta">
-            {loading ? 'LOADING…'
-              : viewMode !== 'radar'
-              ? chartResolution === 'month'
-                ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
-                : `${filteredComplaints.length.toLocaleString()} REPORTS`
-              : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
           </div>
         </div>
 
@@ -325,61 +287,113 @@ export default function App() {
 
       {/* ── Main view (radar or chart) ── */}
       <div className="radar-wrap">
+
+        {/* RADAR VIEW */}
         {viewMode === 'radar' && (
-          <RadarCanvas
-            complaints={filteredComplaints}
-            replayTime={replayTime}
-            dotLifetime={DOT_LIFETIME_MS}
-            onPing={handlePing}
-            onBatchLoad={handleBatchLoad}
-            hoveredKey={hoveredKey || expandedKey}
-          />
+          <div className="view-column">
+            <RadarCanvas
+              complaints={filteredComplaints}
+              replayTime={replayTime}
+              dotLifetime={DOT_LIFETIME_MS}
+              onPing={handlePing}
+              onBatchLoad={handleBatchLoad}
+              hoveredKey={hoveredKey || expandedKey}
+            />
+            {/* Radar controls — below the circle */}
+            <div className="view-controls">
+              <div className="vc-nav-row">
+                <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
+                <span className="vc-date">{dataDate}</span>
+                <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
+              </div>
+              <div className="vc-meta">
+                {loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
+              </div>
+              <div className="vc-sub">{timeStr} ET · 24H DELAY</div>
+            </div>
+          </div>
         )}
+
+        {/* CHART VIEW */}
         {viewMode !== 'radar' && (
-          <div className="chart-wrap">
-            {monthLoading && <div className="chart-loading">LOADING MONTH…</div>}
-            {!monthLoading && chartResolution === 'month' && (
-              <MonthChart
-                data={monthData}
-                selectedDate={selectedDate}
-                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, totalInBar: hit.totalInBar, barIdx: hit.barIdx, x, y } : null)}
-                onSegmentClick={handleSegmentClick}
-              />
-            )}
-            {chartResolution === 'day' && (
-              <BarChart
-                complaints={filteredComplaints}
-                resolution="day"
-                selectedDate={selectedDate}
-                chartMode={chartMode}
-                onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, totalInBar: hit.totalInBar, barIdx: hit.barIdx, x, y } : null)}
-                onSegmentClick={handleSegmentClick}
-              />
-            )}
-            {/* Tooltip */}
-            {tooltip && (() => {
-              // Bar label: "3AM–4AM" for day, "Mar 5" for month
-              let barLabel = '';
-              if (chartResolution === 'day') {
-                const h = tooltip.barIdx;
-                const suffix = h < 12 ? 'AM' : 'PM';
-                const h12 = h % 12 === 0 ? 12 : h % 12;
-                const h12next = (h + 1) % 12 === 0 ? 12 : (h + 1) % 12;
-                const suffixNext = (h + 1) < 12 ? 'AM' : 'PM';
-                barLabel = `${h12}${suffix}–${h12next}${suffixNext}`;
-              } else {
-                const d2 = new Date(selectedDate + 'T12:00:00');
-                const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                barLabel = `${months[d2.getMonth()]} ${tooltip.barIdx + 1}`;
-              }
-              return (
-                <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}>
-                  <div className="chart-tooltip-bar">{barLabel}</div>
-                  <div className="chart-tooltip-type">{tooltip.type}</div>
-                  <div className="chart-tooltip-count">{tooltip.count.toLocaleString()} <span className="chart-tooltip-of">/ {tooltip.totalInBar.toLocaleString()}</span></div>
+          <div className="view-column">
+            <div className="chart-wrap">
+              {monthLoading && <div className="chart-loading">LOADING MONTH…</div>}
+              {!monthLoading && chartResolution === 'month' && (
+                <MonthChart
+                  data={monthData}
+                  selectedDate={selectedDate}
+                  onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, totalInBar: hit.totalInBar, barIdx: hit.barIdx, x, y } : null)}
+                  onSegmentClick={handleSegmentClick}
+                />
+              )}
+              {chartResolution === 'day' && (
+                <BarChart
+                  complaints={filteredComplaints}
+                  resolution="day"
+                  selectedDate={selectedDate}
+                  chartMode={chartMode}
+                  onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, totalInBar: hit.totalInBar, barIdx: hit.barIdx, x, y } : null)}
+                  onSegmentClick={handleSegmentClick}
+                />
+              )}
+              {/* Tooltip */}
+              {tooltip && (() => {
+                let barLabel = '';
+                if (chartResolution === 'day') {
+                  const h = tooltip.barIdx;
+                  const h12 = h % 12 === 0 ? 12 : h % 12;
+                  const h12next = (h + 1) % 12 === 0 ? 12 : (h + 1) % 12;
+                  barLabel = `${h12}${h < 12 ? 'AM' : 'PM'}–${h12next}${(h + 1) < 12 ? 'AM' : 'PM'}`;
+                } else {
+                  const d2 = new Date(selectedDate + 'T12:00:00');
+                  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                  barLabel = `${months[d2.getMonth()]} ${tooltip.barIdx + 1}`;
+                }
+                return (
+                  <div className="chart-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}>
+                    <div className="chart-tooltip-bar">{barLabel}</div>
+                    <div className="chart-tooltip-type">{tooltip.type}</div>
+                    <div className="chart-tooltip-count">{tooltip.count.toLocaleString()} <span className="chart-tooltip-of">/ {tooltip.totalInBar.toLocaleString()}</span></div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Chart controls — below the chart */}
+            <div className="view-controls">
+              {/* Row 1: resolution toggle */}
+              <div className="vc-toggle-row">
+                <button className={`vc-toggle-btn${chartResolution === 'month' ? ' active' : ''}`}
+                  onClick={() => handleChartResolution('month')}>MONTH</button>
+                <button className={`vc-toggle-btn${chartResolution === 'day' ? ' active' : ''}`}
+                  onClick={() => handleChartResolution('day')}>DAY</button>
+              </div>
+              {/* Row 2: nav (unit changes based on resolution) */}
+              <div className="vc-nav-row">
+                <button className="vc-nav-btn"
+                  onClick={() => chartResolution === 'month' ? switchMonth(-1) : switchDate(-1)}>◀</button>
+                <span className="vc-date">{dataDate}</span>
+                <button className="vc-nav-btn"
+                  onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}>▶</button>
+              </div>
+              {/* Row 3: DAY sub-toggle (STACK / TIME) — only when day is active */}
+              {chartResolution === 'day' && (
+                <div className="vc-toggle-row">
+                  <button className={`vc-toggle-btn${chartMode === 'stack' ? ' active' : ''}`}
+                    onClick={() => setChartMode('stack')}>STACK</button>
+                  <button className={`vc-toggle-btn${chartMode === 'time' ? ' active' : ''}`}
+                    onClick={() => setChartMode('time')}>TIME</button>
                 </div>
-              );
-            })()}
+              )}
+              {/* Meta count */}
+              <div className="vc-meta">
+                {loading ? 'LOADING…'
+                  : chartResolution === 'month'
+                  ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
+                  : `${filteredComplaints.length.toLocaleString()} REPORTS`}
+              </div>
+            </div>
           </div>
         )}
       </div>
