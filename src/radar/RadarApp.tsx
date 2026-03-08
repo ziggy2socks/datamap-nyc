@@ -553,7 +553,7 @@ export default function App() {
                         complaint_type: r.type,
                         borough: `${MONTHS[month]} ${trendsYear}`,
                         created_date: `${trendsYear}-${String(month+1).padStart(2,'0')}-01T00:00:00.000`,
-                        descriptor: `${r.count.toLocaleString()} complaints`,
+                        descriptor: `${r.count}`,
                         status: '',
                         agency_name: '',
                         incident_address: '',
@@ -628,7 +628,33 @@ export default function App() {
           {feed.length === 0 && (
             <div className="feed-empty">Waiting for signals…</div>
           )}
-          {feed.map((c) => {
+
+          {/* ── Trends breakdown — clean type + count rows ── */}
+          {feed.length > 0 && feed[0].unique_key.startsWith('trends-') && (() => {
+            const total = (feed as any[]).reduce((s: number, c: any) => s + parseInt(c.descriptor), 0);
+            return (feed as any[]).map((c: any) => {
+              const count = parseInt(c.descriptor);
+              const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
+              const color = getComplaintColor(c.complaint_type);
+              return (
+                <div key={c.unique_key} className="feed-item feed-item--trend"
+                  style={{ '--item-color': color } as React.CSSProperties}>
+                  <span className="feed-dot" style={{ background: color }} />
+                  <div className="feed-content">
+                    <div className="feed-type">{c.complaint_type}</div>
+                    <div className="trend-bar-row">
+                      <div className="trend-bar" style={{ width: `${pct}%`, background: color }} />
+                      <span className="trend-count">{count.toLocaleString()}</span>
+                      <span className="trend-pct">{pct}%</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            });
+          })()}
+
+          {/* ── Radar/chart feed — normal complaint rows ── */}
+          {(feed.length === 0 || !feed[0].unique_key.startsWith('trends-')) && feed.map((c) => {
             const isExpanded = expandedKey === c.unique_key;
             return (
               <div
@@ -644,9 +670,7 @@ export default function App() {
                   <div className="feed-type">{c.complaint_type}</div>
                   {c.descriptor && <div className="feed-desc">{c.descriptor}</div>}
                   <div className="feed-meta">
-                    {c.unique_key.startsWith('trends-')
-                      ? c.borough
-                      : `${c.borough} · ${new Date(c.created_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}`}
+                    {c.borough} · {new Date(c.created_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}
                   </div>
                   {isExpanded && (
                     <div className="feed-detail">
@@ -665,7 +689,6 @@ export default function App() {
             );
           })}
         </div>
-
       </div>
     </div>
   );

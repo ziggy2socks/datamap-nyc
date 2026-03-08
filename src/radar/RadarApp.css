@@ -441,6 +441,35 @@ html, body, #root {
 .trends-tooltip {
   min-width: 160px;
 }
+/* ── Trend breakdown rows in feed ── */
+.feed-item--trend {
+  cursor: default;
+}
+.trend-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.trend-bar {
+  height: 3px;
+  border-radius: 2px;
+  min-width: 2px;
+  max-width: 55%;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.trend-count {
+  font: 700 10px var(--font);
+  color: var(--text);
+  flex-shrink: 0;
+}
+.trend-pct {
+  font: 400 9px var(--font);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .trends-lag-notice {
   position: absolute;
   bottom: 8px;
