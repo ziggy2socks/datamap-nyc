@@ -227,20 +227,33 @@ html, body, #root {
 }
 
 .radar-canvas {
-  /* 48px controls bar + 1px border + a little breathing room */
-  width: min(calc(100vw - var(--sidebar-w) - var(--feed-w) - 40px), calc(100vh - 72px));
-  height: min(calc(100vw - var(--sidebar-w) - var(--feed-w) - 40px), calc(100vh - 72px));
+  /* 48px controls + 20px breathing room top + bottom */
+  width: min(calc(100vw - var(--sidebar-w) - var(--feed-w) - 40px), calc(100vh - 108px));
+  height: min(calc(100vw - var(--sidebar-w) - var(--feed-w) - 40px), calc(100vh - 108px));
   display: block;
   flex-shrink: 0;
+  margin-bottom: 20px;
 }
 
-/* ── View controls bar — fixed height, 5-column grid, always present ── */
+/* ── Floating meta (top-right of view area) ── */
+.view-meta-float {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font: 400 8px var(--font);
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ── View controls bar — fixed height, 3-column grid, always present ── */
 .view-controls {
   width: 100%;
   height: 48px;
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
   padding: 0 16px;
   background: rgba(1,4,10,0.7);
@@ -255,6 +268,23 @@ html, body, #root {
 .vc-col--left   { justify-content: flex-start; }
 .vc-col--center { justify-content: center; }
 .vc-col--right  { justify-content: flex-end; }
+
+/* ── Stack/Time icon buttons ── */
+.vc-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+.vc-icon-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+.vc-icon-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
 
 .vc-nav-btn {
   font: bold 9px var(--font);
@@ -597,8 +627,23 @@ html, body, #root {
   }
 
   .radar-canvas {
-    width: min(100vw, calc(100vh - 44px - 200px));
-    height: min(100vw, calc(100vh - 44px - 200px));
+    width: min(100vw - 16px, calc(100vh - 44px - 200px - 48px - 20px));
+    height: min(100vw - 16px, calc(100vh - 44px - 200px - 48px - 20px));
+    margin-bottom: 8px;
+  }
+
+  /* Controls bar on mobile — col 1 left, col 2 left, col 3 right-ish */
+  .view-controls {
+    grid-template-columns: auto auto 1fr;
+    padding: 0 10px;
+    gap: 4px;
+  }
+  .vc-col--center { justify-content: flex-end; }
+
+  .view-meta-float {
+    top: 6px;
+    right: 10px;
+    font-size: 7px;
   }
 
   /* Sidebar — slide-in overlay from left */

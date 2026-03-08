@@ -291,6 +291,10 @@ export default function App() {
         {/* RADAR VIEW */}
         {viewMode === 'radar' && (
           <div className="view-column">
+            {/* Floating meta — top right of canvas area */}
+            <div className="view-meta-float">
+              {loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS · ${timeStr} ET`}
+            </div>
             <RadarCanvas
               complaints={filteredComplaints}
               replayTime={replayTime}
@@ -299,18 +303,14 @@ export default function App() {
               onBatchLoad={handleBatchLoad}
               hoveredKey={hoveredKey || expandedKey}
             />
-            {/* Controls bar — fixed height, 5-column grid */}
+            {/* Controls bar — 3-column grid */}
             <div className="view-controls">
-              <div className="vc-col vc-col--left">{/* col 1: empty for radar */}</div>
-              <div className="vc-col vc-col--center">{/* col 2: empty for radar */}</div>
+              <div className="vc-col vc-col--left" />{/* col 1: empty */}
+              <div className="vc-col vc-col--left" />{/* col 2: empty */}
               <div className="vc-col vc-col--center">
                 <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
                 <span className="vc-date">{dataDate}</span>
                 <button className="vc-nav-btn" onClick={() => switchDate(1)}>▶</button>
-              </div>
-              <div className="vc-col vc-col--center">{/* col 4: empty */}</div>
-              <div className="vc-col vc-col--right">
-                <span className="vc-meta">{loading ? 'LOADING…' : `${filteredComplaints.length.toLocaleString()} SIGNALS`}</span>
               </div>
             </div>
           </div>
@@ -319,6 +319,13 @@ export default function App() {
         {/* CHART VIEW */}
         {viewMode !== 'radar' && (
           <div className="view-column">
+            {/* Floating meta — top right, same position as radar */}
+            <div className="view-meta-float">
+              {loading ? 'LOADING…'
+                : chartResolution === 'month'
+                ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
+                : `${filteredComplaints.length.toLocaleString()} REPORTS`}
+            </div>
             <div className="chart-wrap">
               {monthLoading && <div className="chart-loading">LOADING MONTH…</div>}
               {!monthLoading && chartResolution === 'month' && (
@@ -362,17 +369,13 @@ export default function App() {
               })()}
             </div>
 
-            {/* Controls bar — fixed height, 5-column grid */}
+            {/* Controls bar — 3-column grid */}
             {(() => {
               const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
               const d = new Date(selectedDate + 'T12:00:00');
               const chartDateLabel = chartResolution === 'day'
                 ? `${MONTHS[d.getMonth()]} ${String(d.getDate()).padStart(2,'0')}`
-                : `${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
-              const reportCount = loading ? 'LOADING…'
-                : chartResolution === 'month'
-                ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
-                : `${filteredComplaints.length.toLocaleString()} REPORTS`;
+                : `${MONTHS[d.getMonth()]} '${String(d.getFullYear()).slice(2)}`;
               return (
                 <div className="view-controls">
                   {/* Col 1: MONTH | DAY toggle — left */}
@@ -382,14 +385,30 @@ export default function App() {
                     <button className={`vc-toggle-btn${chartResolution === 'day' ? ' active' : ''}`}
                       onClick={() => handleChartResolution('day')}>DAY</button>
                   </div>
-                  {/* Col 2: STACK | TIME (day only) — center */}
-                  <div className="vc-col vc-col--center">
+                  {/* Col 2: STACK | TIME icons (day only) — left */}
+                  <div className="vc-col vc-col--left">
                     {chartResolution === 'day' && (
                       <>
-                        <button className={`vc-toggle-btn${chartMode === 'stack' ? ' active' : ''}`}
-                          onClick={() => setChartMode('stack')}>STACK</button>
-                        <button className={`vc-toggle-btn${chartMode === 'time' ? ' active' : ''}`}
-                          onClick={() => setChartMode('time')}>TIME</button>
+                        {/* Stack icon — 4 horizontal bars of varying width */}
+                        <button className={`vc-icon-btn${chartMode === 'stack' ? ' active' : ''}`}
+                          onClick={() => setChartMode('stack')} title="Stack by type">
+                          <svg width="16" height="14" viewBox="0 0 16 14" fill="none">
+                            <rect x="0" y="0"  width="16" height="2.5" rx="0.5" fill="currentColor"/>
+                            <rect x="0" y="4"  width="12" height="2.5" rx="0.5" fill="currentColor"/>
+                            <rect x="0" y="8"  width="9"  height="2.5" rx="0.5" fill="currentColor"/>
+                            <rect x="0" y="12" width="5"  height="2.5" rx="0.5" fill="currentColor"/>
+                          </svg>
+                        </button>
+                        {/* Clock icon */}
+                        <button className={`vc-icon-btn${chartMode === 'time' ? ' active' : ''}`}
+                          onClick={() => setChartMode('time')} title="Position by time">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
+                            <line x1="8" y1="8" x2="8"   y2="3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                            <line x1="8" y1="8" x2="11.5" y2="10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                            <circle cx="8" cy="8" r="1" fill="currentColor"/>
+                          </svg>
+                        </button>
                       </>
                     )}
                   </div>
@@ -400,12 +419,6 @@ export default function App() {
                     <span className="vc-date">{chartDateLabel}</span>
                     <button className="vc-nav-btn"
                       onClick={() => chartResolution === 'month' ? switchMonth(1) : switchDate(1)}>▶</button>
-                  </div>
-                  {/* Col 4: empty — center */}
-                  <div className="vc-col vc-col--center" />
-                  {/* Col 5: count — right */}
-                  <div className="vc-col vc-col--right">
-                    <span className="vc-meta">{reportCount}</span>
                   </div>
                 </div>
               );
