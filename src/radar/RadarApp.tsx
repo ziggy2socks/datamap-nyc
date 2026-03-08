@@ -383,6 +383,14 @@ export default function App() {
                 onPing={handlePing}
                 onBatchLoad={handleBatchLoad}
                 hoveredKey={hoveredKey || expandedKey}
+                onDotClick={(c) => {
+                  // Add to top of feed if not already there, then expand
+                  setFeed(prev => {
+                    const exists = prev.some(p => p.unique_key === c.unique_key);
+                    return exists ? prev : [c, ...prev].slice(0, MAX_FEED);
+                  });
+                  setExpandedKey(c.unique_key);
+                }}
               />
             </div>
             {/* Controls bar — live time + date nav */}

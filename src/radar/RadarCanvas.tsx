@@ -10,6 +10,7 @@ interface Props {
   onPing: (complaint: Complaint) => void;
   onBatchLoad: (complaints: Complaint[]) => void;
   hoveredKey: string | null;
+  onDotClick?: (complaint: Complaint) => void;
 }
 
 const SIZE = 600;
@@ -76,7 +77,7 @@ function renderTrail(sweep: number) {
   }
 }
 
-export function RadarCanvas({ complaints, replayTime, dotLifetime, onPing, onBatchLoad, hoveredKey }: Props) {
+export function RadarCanvas({ complaints, replayTime, dotLifetime, onPing, onBatchLoad, hoveredKey, onDotClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const angleRef = useRef(-Math.PI / 2);
@@ -319,12 +320,12 @@ export function RadarCanvas({ complaints, replayTime, dotLifetime, onPing, onBat
           if (d.key !== hKey) continue;
           if (d.createdMs > now || d.createdMs < windowStart) break;
 
-          const s = 5;  // bracket arm length
-          const g = 6;  // half-size of the square around dot
+          const s = 7;  // bracket arm length
+          const g = 9;  // half-size of the square around dot
 
           ctx.save();
-          ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-          ctx.lineWidth = 0.75;
+          ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+          ctx.lineWidth = 1.5;
 
           // Corner brackets forming a square: ┌ ┐ └ ┘
           ctx.beginPath();
@@ -411,12 +412,36 @@ export function RadarCanvas({ complaints, replayTime, dotLifetime, onPing, onBat
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!onDotClick) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = SIZE / rect.width;
+    const scaleY = SIZE / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+    const now = replayRef.current;
+    const windowStart = now - dotLifetime;
+    const dots = dotsRef.current;
+    let closest: DotInfo | null = null;
+    let closestDist = 16; // px hit radius
+    for (const d of dots) {
+      if (d.createdMs > now || d.createdMs < windowStart) continue;
+      const dist = Math.hypot(mx - d.x, my - d.y);
+      if (dist < closestDist) { closestDist = dist; closest = d; }
+    }
+    if (closest) onDotClick(closest.complaint);
+  };
+
   return (
     <canvas
       ref={canvasRef}
       width={SIZE}
       height={SIZE}
       className="radar-canvas"
+      onClick={handleClick}
+      style={{ cursor: 'crosshair' }}
     />
   );
 }
