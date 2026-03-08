@@ -147,24 +147,45 @@ export async function fetchComplaints(): Promise<{ data: Complaint[]; date: stri
   return { data, date: fallbackDate };
 }
 
+/** Pre-aggregated daily counts for a month — one row per (day, complaint_type) */
+export interface DailyCount {
+  day: string;         // YYYY-MM-DD
+  complaint_type: string;
+  count: number;
+}
+
 /**
- * Fetch a full month of complaints for chart view.
- * Fetches from the 1st to the last day of the month containing dateStr.
- * Limit 50000 — enough for a typical month.
+ * Fetch aggregated daily complaint counts for a full month.
+ * Uses Socrata $group to get ~600 rows instead of ~400K raw records.
+ * Fast — under 500ms.
  */
-export async function fetchComplaintsForMonth(dateStr: string): Promise<Complaint[]> {
+export async function fetchMonthAggregate(dateStr: string): Promise<DailyCount[]> {
   const d = new Date(dateStr + 'T12:00:00');
   const year = d.getFullYear();
   const month = d.getMonth();
   const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
   const nextMonthStart = new Date(year, month + 1, 1).toISOString().split('T')[0];
-  const qs = `$where=created_date>='${monthStart}'+AND+created_date<'${nextMonthStart}'&$order=created_date+ASC&$limit=50000`;
+
+  // Socrata date_trunc_ymd returns truncated date string
+  const qs = [
+    `$select=date_trunc_ymd(created_date)+AS+day,complaint_type,count(*)+AS+cnt`,
+    `$where=created_date>='${monthStart}'+AND+created_date<'${nextMonthStart}'`,
+    `$group=date_trunc_ymd(created_date),complaint_type`,
+    `$order=day+ASC`,
+    `$limit=5000`,
+  ].join('&');
+
   const res = await fetch(`/api/311?${qs}`, { cache: 'no-store' });
   if (!res.ok) {
     const txt = await res.text();
     throw new Error(`311 API error: ${res.status} — ${txt.slice(0, 200)}`);
   }
-  return res.json();
+  const raw: { day: string; complaint_type: string; cnt: string }[] = await res.json();
+  return raw.map(r => ({
+    day: r.day.split('T')[0],
+    complaint_type: r.complaint_type,
+    count: parseInt(r.cnt, 10),
+  }));
 }
 
 export function getTopComplaintTypes(complaints: Complaint[], n = 12): string[] {

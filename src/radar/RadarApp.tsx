@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { RadarCanvas } from './RadarCanvas';
 import { BarChart } from './BarChart';
+import { MonthChart } from './MonthChart';
 import type { ChartMode } from './BarChart';
-import { fetchComplaints, fetchComplaintsForDate, fetchComplaintsForMonth, getComplaintColor, getTopComplaintTypes } from './complaints';
+import { fetchComplaints, fetchComplaintsForDate, fetchMonthAggregate, getComplaintColor, getTopComplaintTypes } from './complaints';
+import type { DailyCount } from './complaints';
 import type { Complaint } from './complaints';
 import './RadarApp.css';
 
@@ -15,7 +17,7 @@ export default function App() {
   const [viewMode,        setViewMode]        = useState<ViewMode>('radar');
   const [chartResolution, setChartResolution] = useState<'day' | 'month'>('day');
   const [chartMode,       setChartMode]       = useState<ChartMode>('stack');
-  const [monthComplaints, setMonthComplaints] = useState<Complaint[]>([]);
+  const [monthData, setMonthData] = useState<DailyCount[]>([]);
   const [monthLoading,    setMonthLoading]    = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
@@ -106,19 +108,19 @@ export default function App() {
     setViewMode(mode);
   };
 
-  // Fetch a month of data (lazy, cached per selectedDate's month)
+  // Fetch aggregated month data (fast — ~600 rows via $group)
   const loadMonth = useCallback(async (date: string) => {
     setMonthLoading(true);
     try {
-      const data = await fetchComplaintsForMonth(date);
-      setMonthComplaints(data);
+      const agg = await fetchMonthAggregate(date);
+      setMonthData(agg);
     } catch { /* ignore */ }
     finally { setMonthLoading(false); }
   }, []);
 
   const handleChartResolution = (res: 'day' | 'month') => {
     setChartResolution(res);
-    if (res === 'month' && monthComplaints.length === 0 && selectedDate) {
+    if (res === 'month' && monthData.length === 0 && selectedDate) {
       loadMonth(selectedDate);
     }
   };
@@ -129,12 +131,23 @@ export default function App() {
     const d = new Date(selectedDate + 'T12:00:00');
     d.setMonth(d.getMonth() + offset);
     const newDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-    setMonthComplaints([]);
+    setMonthData([]);
     setSelectedDate(newDate);
     const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
     setDataDate(`${months[d.getMonth()]} ${d.getFullYear()}`);
     loadMonth(newDate);
   };
+
+  // Drill from month bar click → load that day
+  const handleDrillDay = useCallback(async (dateStr: string) => {
+    setChartResolution('day');
+    setLoading(true);
+    try {
+      const data = await fetchComplaintsForDate(dateStr);
+      if (data.length > 0) initializeData(data, dateStr);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
 
   // Replay clock — always 1× real time
   useEffect(() => {
@@ -256,8 +269,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* In chart mode: STACK | TIME sub-toggle */}
-          {viewMode !== 'radar' && (
+          {/* In chart mode (day only): STACK | TIME sub-toggle */}
+          {viewMode !== 'radar' && chartResolution === 'day' && (
             <div className="chart-mode-toggle">
               <button className={`chart-mode-btn${chartMode === 'stack' ? ' active' : ''}`}
                 onClick={() => setChartMode('stack')} title="Stack by type">STACK</button>
@@ -268,7 +281,9 @@ export default function App() {
           <div className="meta">
             {loading ? 'LOADING…'
               : viewMode !== 'radar'
-              ? `${(chartResolution === 'month' ? monthComplaints : filteredComplaints).length.toLocaleString()} REPORTS`
+              ? chartResolution === 'month'
+                ? `${monthData.reduce((s, r) => s + r.count, 0).toLocaleString()} REPORTS`
+                : `${filteredComplaints.length.toLocaleString()} REPORTS`
               : `${filteredComplaints.length.toLocaleString()} SIGNALS`}
           </div>
         </div>
@@ -317,13 +332,18 @@ export default function App() {
         )}
         {viewMode !== 'radar' && (
           <div className="chart-wrap">
-            {monthLoading && chartResolution === 'month' && (
-              <div className="chart-loading">LOADING MONTH…</div>
+            {monthLoading && <div className="chart-loading">LOADING MONTH…</div>}
+            {!monthLoading && chartResolution === 'month' && (
+              <MonthChart
+                data={monthData}
+                selectedDate={selectedDate}
+                onDrillDay={handleDrillDay}
+              />
             )}
-            {!(monthLoading && chartResolution === 'month') && (
+            {chartResolution === 'day' && (
               <BarChart
-                complaints={chartResolution === 'month' ? monthComplaints : filteredComplaints}
-                resolution={chartResolution}
+                complaints={filteredComplaints}
+                resolution="day"
                 selectedDate={selectedDate}
                 chartMode={chartMode}
               />
