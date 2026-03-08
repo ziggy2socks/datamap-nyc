@@ -11,6 +11,7 @@
     { "source": "/311",                "destination": "/index.html" },
     { "source": "/suitability",        "destination": "/index.html" },
     { "source": "/permits",            "destination": "/index.html" },
+    { "source": "/permits/map",        "destination": "/index.html" },
     { "source": "/(.*)",               "destination": "/index.html" }
   ],
   "headers": [
