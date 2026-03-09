@@ -66,6 +66,7 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState('');
   const [latestDataDate, setLatestDataDate] = useState(''); // true ceiling from API
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [selectedDotKey, setSelectedDotKey] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [mobilePanel, setMobilePanel] = useState<'none' | 'feed' | 'filters'>('none');
 
@@ -81,6 +82,7 @@ export default function App() {
     setActiveTypes(new Set(types));
     setFeed([]);
     setExpandedKey(null);
+    setSelectedDotKey(null);
 
     const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
     const d = new Date(dateStr + 'T12:00:00');
@@ -398,8 +400,9 @@ export default function App() {
                 dotLifetime={DOT_LIFETIME_MS}
                 onPing={handlePing}
                 onBatchLoad={handleBatchLoad}
-                hoveredKey={hoveredKey || expandedKey}
+                hoveredKey={hoveredKey || selectedDotKey || expandedKey}
                 onDotClick={(c) => {
+                  setSelectedDotKey(c.unique_key);
                   // Add to top of feed if not already there
                   setFeed(prev => {
                     const exists = prev.some(p => p.unique_key === c.unique_key);
@@ -410,8 +413,7 @@ export default function App() {
                     setExpandedKey(c.unique_key);
                   } else {
                     setExpandedKey(null);
-                    // Scroll happens via useEffect watching expandedKey,
-                    // so manually trigger scroll to the item
+                    // Keep selected brackets on tapped dot, but mobile still just scrolls feed
                     setTimeout(() => {
                       const el = feedListRef.current?.querySelector(`[data-key="${c.unique_key}"]`);
                       el?.scrollIntoView({ block: 'start', behavior: 'smooth' });
