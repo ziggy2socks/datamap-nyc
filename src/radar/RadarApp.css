@@ -699,7 +699,9 @@ html, body, #root {
     padding: 8px 12px;
     background: var(--panel-bg);
     border-bottom: 1px solid var(--border);
-    z-index: 100;
+    position: sticky;
+    top: 0;
+    z-index: 150;
     flex-shrink: 0;
   }
 
