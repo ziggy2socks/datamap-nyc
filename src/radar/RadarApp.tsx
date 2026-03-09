@@ -400,12 +400,23 @@ export default function App() {
                 onBatchLoad={handleBatchLoad}
                 hoveredKey={hoveredKey || expandedKey}
                 onDotClick={(c) => {
-                  // Add to top of feed if not already there, then expand
+                  // Add to top of feed if not already there
                   setFeed(prev => {
                     const exists = prev.some(p => p.unique_key === c.unique_key);
                     return exists ? prev : [c, ...prev].slice(0, MAX_FEED);
                   });
-                  setExpandedKey(c.unique_key);
+                  // Desktop: expand the item; mobile: just scroll to it
+                  if (window.innerWidth >= 768) {
+                    setExpandedKey(c.unique_key);
+                  } else {
+                    setExpandedKey(null);
+                    // Scroll happens via useEffect watching expandedKey,
+                    // so manually trigger scroll to the item
+                    setTimeout(() => {
+                      const el = feedListRef.current?.querySelector(`[data-key="${c.unique_key}"]`);
+                      el?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                    }, 50);
+                  }
                 }}
               />
             </div>
