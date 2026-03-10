@@ -92,14 +92,11 @@ export function TrendsChart({
 
     // ── ALL-YEARS CONTINUOUS MODE ──────────────────────────────────────
     if (showAllYears && allYearsData && allYearsData.size > 0) {
-      // Build sorted year list, each with its own cutoff
-      const sortedYears = [...allYearsData.keys()].sort((a, b) => a - b);
+      // Build sorted year list — exclude current year (incomplete)
+      const sortedYears = [...allYearsData.keys()].filter(yr => yr < year).sort((a, b) => a - b);
       const yearCutoffs = new Map<number, number>();
-      for (const yr of sortedYears) {
-        yearCutoffs.set(yr, yr < year ? 11 : (yr === year ? effectiveCutoff : -1));
-      }
-      // Filter out years with no data
-      const activeYears = sortedYears.filter(yr => (yearCutoffs.get(yr) ?? -1) >= 0);
+      for (const yr of sortedYears) yearCutoffs.set(yr, 11);
+      const activeYears = sortedYears;
       const totalPoints = activeYears.reduce((s, yr) => s + (yearCutoffs.get(yr)! + 1), 0);
 
       // Build per-type continuous value arrays
@@ -323,9 +320,8 @@ export function TrendsChart({
       const avgCount  = new Array(12).fill(0);
 
       for (const [yr, yd] of allYearsData) {
-        if (yr === year) continue;
-        // Each year uses its own cutoff: past years full (11), current year uses effectiveCutoff
-        const cut = yr < year ? 11 : effectiveCutoff;
+        if (yr >= year) continue; // only complete past years
+        const cut = 11;
         const yt = buildMonthTotals(yd, cut);
         const color = YEAR_COLORS[yr] ?? '#888888';
         drawLine(yt, color, 0.3, 1, false, cut);
@@ -343,26 +339,7 @@ export function TrendsChart({
         ctx.restore();
       }
 
-      // current year line — draw only up to effectiveCutoff
-      // Use allYearsData entry for current year if available (avoids stale trendsData)
-      const curYearData = allYearsData.get(year) ?? data;
-      const curYearTotals = buildMonthTotals(curYearData, effectiveCutoff);
-      const curColor = YEAR_COLORS[year] ?? '#ffffff';
-      drawLine(curYearTotals, curColor, 0.9, 2, false, effectiveCutoff);
-      // cutoff shade + marker for current year
-      const cx2 = xForMonth(effectiveCutoff);
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      const nextX2 = xForMonth(effectiveCutoff + 0.5);
-      ctx.fillRect(nextX2, PAD.t, xForMonth(11) + 24 - nextX2, chartH);
-      ctx.restore();
-      ctx.save();
-      ctx.fillStyle = curColor;
-      ctx.globalAlpha = 0.9;
-      ctx.font = `700 7px var(--font, monospace)`;
-      ctx.textAlign = 'right';
-      ctx.fillText(String(year), cx2 - 2, yForVal(curYearTotals[effectiveCutoff]) - 3);
-      ctx.restore();
+      // current year excluded — overlay shows complete years only (2020–prev)
 
       // avg line — only over complete months (0-11 for past years)
       // avgCount[m] only counts past years so avg is correct for completed months
