@@ -68,15 +68,18 @@ function typeHeatColor(hex: string): maplibregl.ExpressionSpecification {
   ] as unknown as maplibregl.ExpressionSpecification;
 }
 
+// All-mode: stays saturated cyan at high zoom, only tips to white at extreme hotspots
+// Raise the weight cap per zoom level so the density range spreads wider
 const ALL_COLOR: maplibregl.ExpressionSpecification = [
   'interpolate',['linear'],['heatmap-density'],
-  0,   'rgba(0,0,0,0)',
-  0.08,'rgba(0,30,50,0.5)',
-  0.25,'rgba(0,90,120,0.65)',
-  0.5, 'rgba(0,160,190,0.78)',
-  0.72,'rgba(0,215,230,0.87)',
-  0.9, 'rgba(160,248,255,0.93)',
-  1.0, 'rgba(255,255,255,0.97)',
+  0,    'rgba(0,0,0,0)',
+  0.05, 'rgba(0,20,45,0.55)',
+  0.2,  'rgba(0,75,110,0.72)',
+  0.4,  'rgba(0,140,170,0.82)',
+  0.6,  'rgba(0,198,220,0.9)',
+  0.8,  'rgba(0,228,240,0.94)',
+  0.95, 'rgba(140,248,255,0.97)',
+  1.0,  'rgba(255,255,255,0.99)',
 ] as unknown as maplibregl.ExpressionSpecification;
 
 // ── Snap coordinate to grid ────────────────────────────────────────────────
@@ -146,7 +149,6 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
   const [hoverInfo, setHoverInfo] = useState<{count:number; types:string[]} | null>(null);
 
   const selectedTypes = [...activeTypes];
-  const hasAny  = selectedTypes.length > 0;
 
   // ── Layer management helpers ───────────────────────────────────────────
 
@@ -179,11 +181,14 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
         type: 'heatmap',
         source: id,
         paint: {
-          'heatmap-weight':     ['interpolate',['linear'],['get','count'], 0, 0, weightMax, 1],
-          'heatmap-intensity':  ['interpolate',['linear'],['zoom'], 8, 0.5, 14, 4],
-          'heatmap-color':      color,
-          'heatmap-radius':     ['interpolate',['linear'],['zoom'], 8, 6, 12, 18, 15, 32],
-          'heatmap-opacity':    0.88,
+          // weight: log-scale so lower counts still register
+          'heatmap-weight': ['interpolate',['linear'],['get','count'], 0, 0, weightMax, 1],
+          // intensity stays lower at zoom-out so mid-density cells stay cyan not white
+          'heatmap-intensity': ['interpolate',['linear'],['zoom'], 7, 0.3, 10, 0.7, 14, 3],
+          'heatmap-color':     color,
+          // radius grows with zoom for detail; at zoom-out keep small so cells don't bleed together
+          'heatmap-radius':    ['interpolate',['linear'],['zoom'], 7, 4, 10, 8, 13, 18, 15, 30],
+          'heatmap-opacity':   0.9,
         },
       }, 'carto-labels');
     }
@@ -367,23 +372,13 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
         </div>
       )}
 
-      {/* Active type badges (multi) */}
-      {hasAny && (
-        <div className="heatmap-badges">
-          {selectedTypes.map(t => (
-            <span key={t} className="heatmap-badge" style={{ borderColor: getComplaintColor(t), color: getComplaintColor(t) }}>
-              <span className="heatmap-badge-dot" style={{ background: getComplaintColor(t) }} />
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* No floating badges — sidebar chips show selection clearly */}
 
       {/* Controls bar */}
       <div className="heatmap-controls view-controls">
         {/* Time mode */}
         <div className="vc-col vc-col--left">
-          <button className={`vc-toggle-btn${timeMode==='5y'?' active':''}`} onClick={() => setTimeMode('5y')}>5Y</button>
+          <button className={`vc-toggle-btn${timeMode==='5y'?' active':''}`} onClick={() => setTimeMode('5y')}>ALL</button>
           <button className={`vc-toggle-btn${timeMode==='1y'?' active':''}`} onClick={() => setTimeMode('1y')}>1Y</button>
           <button className={`vc-toggle-btn${timeMode==='month'?' active':''}`} onClick={() => setTimeMode('month')}>MONTH</button>
         </div>

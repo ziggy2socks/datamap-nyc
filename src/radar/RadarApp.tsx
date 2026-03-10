@@ -57,6 +57,8 @@ export default function App() {
   const [trendsMode,         setTrendsMode]         = useState<'1y' | 'overlay' | 'continuous'>('1y');
   const [trendsTypesExpanded, setTrendsTypesExpanded] = useState(false);
   const TRENDS_TOP_N = 20;
+  // Map view has its own independent type selection (empty = ALL/no-type mode)
+  const [mapActiveTypes, setMapActiveTypes] = useState<Set<string>>(new Set());
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -388,10 +390,9 @@ export default function App() {
           <div className="filter-header">
             <span className="filter-label">COMPLAINT TYPE</span>
             {viewMode === 'map' ? (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className="filter-all" onClick={() => setTrendsActiveTypes(new Set(trendsTypes.length > 0 ? trendsTypes : topTypes))}>ALL</button>
-                <button className="filter-all" onClick={() => setTrendsActiveTypes(new Set())}>CLEAR</button>
-              </div>
+              <button className="filter-all" onClick={() => setMapActiveTypes(new Set())}>
+                {mapActiveTypes.size === 0 ? 'ALL' : 'CLEAR'}
+              </button>
             ) : viewMode === 'trends' ? (
               <button className="filter-all" onClick={() => {
                 if (trendsActiveTypes.size === trendsTypes.length) setTrendsActiveTypes(new Set());
@@ -405,7 +406,7 @@ export default function App() {
               </button>
             )}
           </div>
-          {viewMode === 'map' && trendsActiveTypes.size >= 4 && (
+          {viewMode === 'map' && mapActiveTypes.size >= 4 && (
             <div className="filter-map-hint">Max 4 types for comparison</div>
           )}
           <div className="filter-list">
@@ -416,7 +417,9 @@ export default function App() {
                 : allList;
               return (<>
                 {visibleList.map(type => {
-                  const isActive = (viewMode === 'trends' || viewMode === 'map')
+                  const isActive = viewMode === 'map'
+                    ? mapActiveTypes.has(type)
+                    : viewMode === 'trends'
                     ? trendsActiveTypes.has(type)
                     : activeTypes.has(type);
                   const toggle = () => {
@@ -427,7 +430,7 @@ export default function App() {
                         return next;
                       });
                     } else if (viewMode === 'map') {
-                      setTrendsActiveTypes(prev => {
+                      setMapActiveTypes(prev => {
                         const next = new Set(prev);
                         if (next.has(type)) {
                           next.delete(type);
@@ -802,10 +805,10 @@ export default function App() {
         )}
         {viewMode === 'map' && (
           <HeatmapView
-            activeTypes={trendsActiveTypes}
+            activeTypes={mapActiveTypes}
             trendsTypes={trendsTypes.length > 0 ? trendsTypes : topTypes}
-            onClearTypes={() => setTrendsActiveTypes(new Set())}
-            onSelectAll={() => setTrendsActiveTypes(new Set(trendsTypes.length > 0 ? trendsTypes : topTypes))}
+            onClearTypes={() => setMapActiveTypes(new Set())}
+            onSelectAll={() => {}}
           />
         )}
       </div>
