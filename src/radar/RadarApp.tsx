@@ -53,8 +53,9 @@ export default function App() {
   const [trendsTypes,        setTrendsTypes]        = useState<string[]>([]);
   const [trendsActiveTypes,  setTrendsActiveTypes]  = useState<Set<string>>(new Set());
   const [trendsShowTotal,    setTrendsShowTotal]    = useState(false);
-  const [trendsCompareYears, setTrendsCompareYears] = useState(false);
-  const [trendsShowAll,      setTrendsShowAll]      = useState(false); // 1Y vs ALL timeline
+  const [trendsMode,         setTrendsMode]         = useState<'1y' | 'overlay' | 'continuous'>('1y');
+  const [trendsTypesExpanded, setTrendsTypesExpanded] = useState(false);
+  const TRENDS_TOP_N = 20;
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -382,31 +383,50 @@ export default function App() {
             )}
           </div>
           <div className="filter-list">
-            {(viewMode === 'trends' ? trendsTypes : topTypes).map(type => {
-              const isActive = viewMode === 'trends' ? trendsActiveTypes.has(type) : activeTypes.has(type);
-              const toggle = () => {
-                if (viewMode === 'trends') {
-                  setTrendsActiveTypes(prev => {
-                    const next = new Set(prev);
-                    if (next.has(type)) next.delete(type); else next.add(type);
-                    return next;
-                  });
-                } else {
-                  toggleType(type);
-                }
-              };
-              return (
-                <button
-                  key={type}
-                  className={`filter-chip ${isActive ? 'active' : ''}`}
-                  onClick={toggle}
-                  style={{ '--chip-color': getComplaintColor(type) } as React.CSSProperties}
-                >
-                  <span className="chip-dot" style={{ background: getComplaintColor(type) }} />
-                  <span className="chip-label">{type}</span>
-                </button>
-              );
-            })}
+            {(() => {
+              const allList = viewMode === 'trends' ? trendsTypes : topTypes;
+              const visibleList = viewMode === 'trends' && !trendsTypesExpanded
+                ? allList.slice(0, TRENDS_TOP_N)
+                : allList;
+              return (<>
+                {visibleList.map(type => {
+                  const isActive = viewMode === 'trends' ? trendsActiveTypes.has(type) : activeTypes.has(type);
+                  const toggle = () => {
+                    if (viewMode === 'trends') {
+                      setTrendsActiveTypes(prev => {
+                        const next = new Set(prev);
+                        if (next.has(type)) next.delete(type); else next.add(type);
+                        return next;
+                      });
+                    } else {
+                      toggleType(type);
+                    }
+                  };
+                  return (
+                    <button
+                      key={type}
+                      className={`filter-chip ${isActive ? 'active' : ''}`}
+                      onClick={toggle}
+                      style={{ '--chip-color': getComplaintColor(type) } as React.CSSProperties}
+                    >
+                      <span className="chip-dot" style={{ background: getComplaintColor(type) }} />
+                      <span className="chip-label">{type}</span>
+                    </button>
+                  );
+                })}
+                {viewMode === 'trends' && allList.length > TRENDS_TOP_N && (
+                  <button
+                    className="filter-chip filter-chip--more"
+                    onClick={() => setTrendsTypesExpanded(v => !v)}
+                    style={{ '--chip-color': 'rgba(0,180,200,0.4)' } as React.CSSProperties}
+                  >
+                    <span className="chip-label" style={{ color: 'rgba(0,200,220,0.5)', textAlign: 'center' }}>
+                      {trendsTypesExpanded ? '▲ SHOW LESS' : `▼ +${allList.length - TRENDS_TOP_N} MORE`}
+                    </span>
+                  </button>
+                )}
+              </>);
+            })()}
           </div>
         </div>
 
@@ -631,13 +651,13 @@ export default function App() {
                     data={trendsData}
                     allYearsData={trendsAllData.size > 0 ? trendsAllData : undefined}
                     year={trendsYear}
-                    showAll={true}
+
                     topTypes={trendsTypes}
                     activeTypes={trendsActiveTypes}
                     cutoffMonth={maxDataMonth(trendsYear)}
-                    showAllYears={trendsShowAll}
+                    showAllYears={trendsMode === 'continuous'}
+                    compareYears={trendsMode === 'overlay'}
                     showTotal={trendsShowTotal}
-                    compareYears={trendsCompareYears}
                     onMonthJump={async (month) => {
                       const targetDate = `${trendsYear}-${String(month + 1).padStart(2, '0')}-01`;
                       setSelectedDate(targetDate);
@@ -684,53 +704,49 @@ export default function App() {
                 <button
                   className={`vc-toggle-btn${trendsShowTotal ? ' active' : ''}`}
                   onClick={() => setTrendsShowTotal(v => !v)}
-                  title="Show total line"
                 >TOTAL</button>
-                <button
-                  className={`vc-toggle-btn${trendsCompareYears ? ' active' : ''}`}
-                  onClick={() => {
-                    const next = !trendsCompareYears;
-                    setTrendsCompareYears(next);
-                    if (next && trendsAllData.size === 0) loadTrends(trendsYear, true);
-                  }}
-                  title="Compare all years"
-                >CMP YRS</button>
               </div>
               <div className="vc-col vc-col--left">
                 <button
-                  className={`vc-toggle-btn${!trendsShowAll ? ' active' : ''}`}
-                  onClick={() => {
-                    setTrendsShowAll(false);
-                    if (trendsAllData.size === 0) loadTrends(trendsYear, true);
-                  }}
+                  className={`vc-toggle-btn${trendsMode === '1y' ? ' active' : ''}`}
+                  onClick={() => setTrendsMode('1y')}
                 >1Y</button>
                 <button
-                  className={`vc-toggle-btn${trendsShowAll ? ' active' : ''}`}
+                  className={`vc-toggle-btn${trendsMode === 'overlay' ? ' active' : ''}`}
                   onClick={() => {
-                    setTrendsShowAll(true);
+                    setTrendsMode('overlay');
+                    if (trendsAllData.size === 0) loadTrends(trendsYear, true);
+                  }}
+                >OVERLAY</button>
+                <button
+                  className={`vc-toggle-btn${trendsMode === 'continuous' ? ' active' : ''}`}
+                  onClick={() => {
+                    setTrendsMode('continuous');
                     if (trendsAllData.size === 0) loadTrends(trendsYear, true);
                   }}
                 >ALL</button>
               </div>
               <div className="vc-col vc-col--center">
-                <button className="vc-nav-btn" onClick={() => {
-                  const yr = trendsYear - 1;
-                  if (yr < 2020) return;
-                  setTrendsYear(yr);
-                  setTrendsData([]);
-                  loadTrends(yr, true);
-                }}>◀</button>
-                <span className="vc-date">{trendsYear}</span>
-                <button className="vc-nav-btn"
-                  disabled={trendsYear >= maxDataYear()}
-                  style={{ opacity: trendsYear >= maxDataYear() ? 0.25 : undefined }}
-                  onClick={() => {
-                    const yr = trendsYear + 1;
-                    if (yr > maxDataYear()) return;
+                {trendsMode !== 'continuous' && (<>
+                  <button className="vc-nav-btn" onClick={() => {
+                    const yr = trendsYear - 1;
+                    if (yr < 2020) return;
                     setTrendsYear(yr);
                     setTrendsData([]);
                     loadTrends(yr, true);
-                  }}>▶</button>
+                  }}>◀</button>
+                  <span className="vc-date">{trendsYear}</span>
+                  <button className="vc-nav-btn"
+                    disabled={trendsYear >= maxDataYear()}
+                    style={{ opacity: trendsYear >= maxDataYear() ? 0.25 : undefined }}
+                    onClick={() => {
+                      const yr = trendsYear + 1;
+                      if (yr > maxDataYear()) return;
+                      setTrendsYear(yr);
+                      setTrendsData([]);
+                      loadTrends(yr, true);
+                    }}>▶</button>
+                </>)}
               </div>
             </div>
           </div>

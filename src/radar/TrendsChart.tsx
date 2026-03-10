@@ -8,13 +8,12 @@ interface Props {
   data: MonthCount[];
   allYearsData?: Map<number, MonthCount[]>;
   year: number;
-  showAll: boolean;
   topTypes: string[];
   activeTypes: Set<string>;
   cutoffMonth?: number;
   showTotal: boolean;
   compareYears: boolean;
-  showAllYears: boolean;         // ALL mode: continuous multi-year timeline
+  showAllYears: boolean;
   onMonthClick?: (month: number, rows: MonthClickRow[]) => void;
   onMonthJump?: (month: number) => void;
 }
@@ -60,7 +59,7 @@ interface PeakMarker {
 }
 
 export function TrendsChart({
-  data, allYearsData, year, showAll, topTypes, activeTypes,
+  data, allYearsData, year, topTypes, activeTypes,
   cutoffMonth, showTotal, compareYears, showAllYears, onMonthClick, onMonthJump
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -68,6 +67,8 @@ export function TrendsChart({
   const [hovered, setHovered] = useState<{ month: number; x: number; y: number } | null>(null);
   const [hoveredType, setHoveredType] = useState<string | null>(null);
   const [hoveredPeak, setHoveredPeak] = useState<PeakMarker | null>(null);
+  // Continuous mode: sliding hover — tracks cursor x → nearest type line
+  const [contHover, setContHover] = useState<{ ptIdx: number; type: string; value: number; yr: number; month: number; cx: number; cy: number; mouseX: number; mouseY: number } | null>(null);
 
   const effectiveCutoff = cutoffMonth !== undefined ? cutoffMonth : 11;
 
@@ -195,7 +196,7 @@ export function TrendsChart({
       if (showTotal) {
         ctx.save();
         ctx.strokeStyle = '#ffffff';
-        ctx.globalAlpha = hoveredType ? 0.3 : 0.75;
+        ctx.globalAlpha = contHover ? 0.15 : 0.75;
         ctx.lineWidth = 1.5;
         ctx.lineJoin = 'round';
         ctx.beginPath();
@@ -203,6 +204,29 @@ export function TrendsChart({
           const x = xForPt(i); const y = yForV(allTotals[i]);
           i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // sliding hover indicator
+      if (contHover) {
+        const color = getComplaintColor(contHover.type);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,200,220,0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(contHover.cx, PAD.t);
+        ctx.lineTo(contHover.cx, PAD.t + chartH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#020810';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(contHover.cx, contHover.cy, 4.5, 0, Math.PI * 2);
+        ctx.fill();
         ctx.stroke();
         ctx.restore();
       }
@@ -464,7 +488,7 @@ export function TrendsChart({
       ctx.fill();
       ctx.restore();
     }
-  }, [data, allYearsData, topTypes, showAll, activeTypes, hovered, hoveredType, hoveredPeak, effectiveCutoff, year, showTotal, compareYears]);
+  }, [data, allYearsData, topTypes, activeTypes, hovered, hoveredType, hoveredPeak, contHover, effectiveCutoff, year, showTotal, compareYears, showAllYears]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -531,7 +555,7 @@ export function TrendsChart({
       }
     }
     return closest;
-  }, [data, topTypes, showAll, activeTypes, effectiveCutoff, compareYears]);
+  }, [data, topTypes, activeTypes, effectiveCutoff, compareYears]);
 
   const hitTestPeak = useCallback((e: React.MouseEvent<HTMLCanvasElement>): PeakMarker | null => {
     if (compareYears) return null;
@@ -550,6 +574,78 @@ export function TrendsChart({
   }, [compareYears]);
 
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Continuous mode: compute sliding hover
+    if (showAllYears && allYearsData && allYearsData.size > 0) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const chartW = canvas.clientWidth - PAD.l - PAD.r;
+        const sortedYears = [...allYearsData.keys()].sort((a, b) => a - b)
+          .filter(yr => (yr < year ? 11 : yr === year ? effectiveCutoff : -1) >= 0);
+        const yearCutoffs = new Map<number, number>();
+        for (const yr of sortedYears) yearCutoffs.set(yr, yr < year ? 11 : effectiveCutoff);
+        const totalPoints = sortedYears.reduce((s, yr) => s + (yearCutoffs.get(yr)! + 1), 0);
+        if (totalPoints > 1) {
+          const rel = (mx - PAD.l) / chartW;
+          const ptIdxRaw = rel * (totalPoints - 1);
+          const ptIdx = Math.max(0, Math.min(totalPoints - 1, Math.round(ptIdxRaw)));
+          // Determine year + month for this point index
+          let rem = ptIdx;
+          let ptYear = sortedYears[0], ptMonth = 0;
+          for (const yr of sortedYears) {
+            const cut = yearCutoffs.get(yr)!;
+            if (rem <= cut) { ptYear = yr; ptMonth = rem; break; }
+            rem -= cut + 1;
+          }
+          // Find closest type line at this point
+          const chartH = canvas.clientHeight - PAD.t - PAD.b;
+          const my = e.clientY - rect.top;
+          const visible = topTypes.filter(t => activeTypes.has(t));
+          // Build a yMax for position calc (same as draw)
+          let yMaxC = 1;
+          if (showTotal) {
+            for (const yr2 of sortedYears) {
+              const yd = allYearsData.get(yr2) ?? [];
+              const tv = buildMonthTotals(yd, yearCutoffs.get(yr2)!);
+              yMaxC = Math.max(yMaxC, ...tv);
+            }
+          } else {
+            for (const type of visible) {
+              for (const yr2 of sortedYears) {
+                const yd = allYearsData.get(yr2) ?? [];
+                const tm = buildTypeMap(yd, yearCutoffs.get(yr2)!);
+                const tv = tm.get(type) ?? [];
+                yMaxC = Math.max(yMaxC, ...tv);
+              }
+            }
+          }
+          const yForV2 = (v: number) => PAD.t + chartH - (v / yMaxC) * chartH;
+          const xForPt2 = (i: number) => PAD.l + (i / (totalPoints - 1)) * chartW;
+          const cx = xForPt2(ptIdx);
+          // Find nearest type
+          let bestType = visible[0] ?? '';
+          let bestDist = Infinity;
+          let bestVal = 0;
+          for (const type of visible) {
+            const yd = allYearsData.get(ptYear) ?? [];
+            const tm = buildTypeMap(yd, yearCutoffs.get(ptYear)!);
+            const v = (tm.get(type) ?? new Array(12).fill(0))[ptMonth] ?? 0;
+            const cy2 = yForV2(v);
+            const dist = Math.abs(my - cy2);
+            if (dist < bestDist) { bestDist = dist; bestType = type; bestVal = v; }
+          }
+          const bestYd = allYearsData.get(ptYear) ?? [];
+          const bestTm = buildTypeMap(bestYd, yearCutoffs.get(ptYear)!);
+          const bestV = (bestTm.get(bestType) ?? new Array(12).fill(0))[ptMonth] ?? 0;
+          const cy = yForV2(bestV);
+          setContHover({ ptIdx, type: bestType, value: bestVal, yr: ptYear, month: ptMonth, cx, cy, mouseX: e.clientX, mouseY: e.clientY });
+        }
+      }
+      setHovered(null); setHoveredType(null); setHoveredPeak(null);
+      return;
+    }
+    setContHover(null);
     const peak = hitTestPeak(e);
     setHoveredPeak(peak);
     const m = hitTestMonth(e);
@@ -557,7 +653,7 @@ export function TrendsChart({
     setHovered(m !== null ? { month: m, x: e.clientX, y: e.clientY } : null);
     setHoveredType(t);
   };
-  const onMouseLeave = () => { setHovered(null); setHoveredType(null); setHoveredPeak(null); };
+  const onMouseLeave = () => { setHovered(null); setHoveredType(null); setHoveredPeak(null); setContHover(null); };
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Click on month label strip → jump to month chart
@@ -618,6 +714,16 @@ export function TrendsChart({
               <span className="trends-tooltip-val">{typeTotals[hovered.month].toLocaleString()}</span>
             </div>
           )}
+        </div>
+      )}
+      {contHover && (
+        <div className="chart-tooltip trends-tooltip" style={{ left: contHover.mouseX + 14, top: contHover.mouseY - 28 }}>
+          <div className="chart-tooltip-bar">{MONTHS[contHover.month]} {contHover.yr}</div>
+          <div className="trends-tooltip-row">
+            <span className="chart-tooltip-dot" style={{ background: getComplaintColor(contHover.type) }} />
+            <span className="trends-tooltip-label">{contHover.type}</span>
+            <span className="trends-tooltip-val">{contHover.value.toLocaleString()}</span>
+          </div>
         </div>
       )}
     </div>
