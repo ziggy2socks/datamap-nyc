@@ -370,11 +370,15 @@ export default function App() {
             <button className={`view-btn${viewMode === 'map' ? ' active' : ''}`}
               onClick={() => handleViewChange('map')} title="Heatmap view">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <circle cx="9" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1" opacity="0.8"/>
-                <circle cx="9" cy="7.5" r="2" fill="currentColor" opacity="0.9"/>
-                <path d="M9 13 C9 13 4.5 9.5 4.5 7.5 a4.5 4.5 0 1 1 9 0 C13.5 9.5 9 13 9 13Z"
-                  stroke="currentColor" strokeWidth="0.8" fill="none" opacity="0.4"/>
-                <line x1="3" y1="16" x2="15" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.3"/>
+                {/* 3×3 grid of squares representing a heatmap */}
+                {[0,1,2].map(row => [0,1,2].map(col => (
+                  <rect key={`${row}-${col}`}
+                    x={2 + col * 5} y={2 + row * 5}
+                    width="4" height="4" rx="0.6"
+                    fill="currentColor"
+                    opacity={[0.3,0.6,0.4, 0.7,1.0,0.6, 0.3,0.5,0.3][row*3+col]}
+                  />
+                )))}
               </svg>
             </button>
           </div>
@@ -384,9 +388,10 @@ export default function App() {
           <div className="filter-header">
             <span className="filter-label">COMPLAINT TYPE</span>
             {viewMode === 'map' ? (
-              <button className="filter-all" onClick={() => setTrendsActiveTypes(new Set())}>
-                {trendsActiveTypes.size === 0 ? 'ALL' : 'CLEAR'}
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="filter-all" onClick={() => setTrendsActiveTypes(new Set(trendsTypes.length > 0 ? trendsTypes : topTypes))}>ALL</button>
+                <button className="filter-all" onClick={() => setTrendsActiveTypes(new Set())}>CLEAR</button>
+              </div>
             ) : viewMode === 'trends' ? (
               <button className="filter-all" onClick={() => {
                 if (trendsActiveTypes.size === trendsTypes.length) setTrendsActiveTypes(new Set());
@@ -798,7 +803,9 @@ export default function App() {
         {viewMode === 'map' && (
           <HeatmapView
             activeTypes={trendsActiveTypes}
+            trendsTypes={trendsTypes.length > 0 ? trendsTypes : topTypes}
             onClearTypes={() => setTrendsActiveTypes(new Set())}
+            onSelectAll={() => setTrendsActiveTypes(new Set(trendsTypes.length > 0 ? trendsTypes : topTypes))}
           />
         )}
       </div>
