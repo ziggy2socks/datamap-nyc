@@ -391,7 +391,7 @@ export default function App() {
             <span className="filter-label">COMPLAINT TYPE</span>
             {viewMode === 'map' ? (
               mapActiveTypes.size > 0
-                ? <button className="filter-all" onClick={() => setMapActiveTypes(new Set())}>CLEAR</button>
+                ? <button className="filter-all" onClick={() => setMapActiveTypes(new Set())}>ALL</button>
                 : <span className="filter-label-dim">ALL</span>
             ) : viewMode === 'trends' ? (
               <button className="filter-all" onClick={() => {
@@ -406,19 +406,18 @@ export default function App() {
               </button>
             )}
           </div>
-          {viewMode === 'map' && mapActiveTypes.size >= 4 && (
-            <div className="filter-map-hint">Max 4 types for comparison</div>
-          )}
           <div className="filter-list">
             {(() => {
               const allList = (viewMode === 'trends' || viewMode === 'map') ? trendsTypes : topTypes;
               const visibleList = (viewMode === 'trends' || viewMode === 'map') && !trendsTypesExpanded
                 ? allList.slice(0, TRENDS_TOP_N)
                 : allList;
+              // In map mode: ALL (empty set) = all chips lit; ONE type = only that chip lit
+              const mapIsAll = viewMode === 'map' && mapActiveTypes.size === 0;
               return (<>
                 {visibleList.map(type => {
                   const isActive = viewMode === 'map'
-                    ? mapActiveTypes.has(type)
+                    ? (mapIsAll || mapActiveTypes.has(type))  // ALL = every chip lit
                     : viewMode === 'trends'
                     ? trendsActiveTypes.has(type)
                     : activeTypes.has(type);
@@ -430,14 +429,10 @@ export default function App() {
                         return next;
                       });
                     } else if (viewMode === 'map') {
+                      // Radio: tap selected type → back to ALL; tap other → select it
                       setMapActiveTypes(prev => {
-                        const next = new Set(prev);
-                        if (next.has(type)) {
-                          next.delete(type);
-                        } else if (next.size < 4) {
-                          next.add(type);
-                        }
-                        return next;
+                        if (prev.has(type)) return new Set();        // deselect → ALL
+                        return new Set([type]);                       // select only this
                       });
                     } else {
                       toggleType(type);
