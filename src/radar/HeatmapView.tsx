@@ -82,6 +82,20 @@ const ALL_COLOR: maplibregl.ExpressionSpecification = [
   1.0,  'rgba(255,255,255,0.99)',
 ] as unknown as maplibregl.ExpressionSpecification;
 
+// ── Weight calibration — use p95 so gradient fills the real data range ────
+
+function p95counts(grid: Map<string,number>): number {
+  const vals = [...grid.values()].sort((a,b) => a-b);
+  if (!vals.length) return 1;
+  return Math.max(1, vals[Math.floor(vals.length * 0.95)]);
+}
+
+function p95fromCells(cells: HeatCell[]): number {
+  const vals = cells.map(c => c.count).sort((a,b) => a-b);
+  if (!vals.length) return 1;
+  return Math.max(1, vals[Math.floor(vals.length * 0.95)]);
+}
+
 // ── Snap coordinate to grid ────────────────────────────────────────────────
 
 function snap(v: number) {
@@ -201,12 +215,7 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
     const map = mapRef.current; if (!map || !map.isStyleLoaded()) return;
     setLoading(true);
 
-    // If no types selected and mode is not showing all, clear map
-    if (types.length === 0 && tm !== '5y' && tm !== '1y') {
-      clearAllLayers();
-      setLoading(false); setLoadMsg('');
-      return;
-    }
+    // types.length === 0 means ALL mode — always load aggregate for all time modes
 
     try {
       if (types.length === 0) {
@@ -224,7 +233,7 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
             }
           }
           clearAllLayers();
-          addHeatLayer('heat-all', gridToGeoJSON(merged), ALL_COLOR, 2000);
+          addHeatLayer('heat-all', gridToGeoJSON(merged), ALL_COLOR, p95counts(merged));
         } else if (tm === '1y') {
           setLoadMsg(`Loading ${yr}…`);
           const r = await fetch(`/data/311_heatmap_${yr}.json`, { cache: 'force-cache' });
@@ -237,8 +246,9 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
               properties: { count: c.count },
             })),
           };
+          const wmax = p95fromCells(d.cells);
           clearAllLayers();
-          addHeatLayer('heat-all', geojson, ALL_COLOR, 500);
+          addHeatLayer('heat-all', geojson, ALL_COLOR, wmax);
         } else {
           // month — live fetch all types for that month
           const start = `${yr}-${String(mo+1).padStart(2,'0')}-01T00:00:00`;
@@ -249,7 +259,7 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
             msg => setLoadMsg(`${MONTHS[mo]} ${yr} — ${msg}`)
           );
           clearAllLayers();
-          addHeatLayer('heat-all', gridToGeoJSON(grid), ALL_COLOR, 300);
+          addHeatLayer('heat-all', gridToGeoJSON(grid), ALL_COLOR, p95counts(grid));
         }
       } else {
         // Type mode — always clear and reload so time changes are respected
@@ -268,7 +278,7 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
           setLoadMsg(`${type}…`);
           const grid = await fetchAndBucket(where, msg => setLoadMsg(`${type} — ${msg}`));
           const color = typeHeatColor(getComplaintColor(type));
-          addHeatLayer(`heat-type-${type}`, gridToGeoJSON(grid), color, 200);
+          addHeatLayer(`heat-type-${type}`, gridToGeoJSON(grid), color, p95counts(grid));
         }
         // Hide ALL layer if present
         if (map.getLayer('heat-all')) removeLayer('heat-all');
