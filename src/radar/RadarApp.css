@@ -308,6 +308,12 @@ html, body, #root {
   display: none;
 }
 
+.filter-label-dim {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(0, 200, 220, 0.3);
+}
+
 .filter-map-hint {
   margin: 6px 0 10px;
   font-size: 10px;

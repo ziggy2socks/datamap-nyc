@@ -390,9 +390,9 @@ export default function App() {
           <div className="filter-header">
             <span className="filter-label">COMPLAINT TYPE</span>
             {viewMode === 'map' ? (
-              <button className="filter-all" onClick={() => setMapActiveTypes(new Set())}>
-                {mapActiveTypes.size === 0 ? 'ALL' : 'CLEAR'}
-              </button>
+              mapActiveTypes.size > 0
+                ? <button className="filter-all" onClick={() => setMapActiveTypes(new Set())}>CLEAR</button>
+                : <span className="filter-label-dim">ALL</span>
             ) : viewMode === 'trends' ? (
               <button className="filter-all" onClick={() => {
                 if (trendsActiveTypes.size === trendsTypes.length) setTrendsActiveTypes(new Set());
