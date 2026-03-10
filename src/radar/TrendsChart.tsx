@@ -10,12 +10,13 @@ interface Props {
   year: number;
   showAll: boolean;
   topTypes: string[];
-  activeTypes: Set<string>;      // from filter chips
+  activeTypes: Set<string>;
   cutoffMonth?: number;
   showTotal: boolean;
   compareYears: boolean;
+  showAllYears: boolean;         // ALL mode: continuous multi-year timeline
   onMonthClick?: (month: number, rows: MonthClickRow[]) => void;
-  onMonthJump?: (month: number) => void;  // jump to month chart
+  onMonthJump?: (month: number) => void;
 }
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -60,7 +61,7 @@ interface PeakMarker {
 
 export function TrendsChart({
   data, allYearsData, year, showAll, topTypes, activeTypes,
-  cutoffMonth, showTotal, compareYears, onMonthClick, onMonthJump
+  cutoffMonth, showTotal, compareYears, showAllYears, onMonthClick, onMonthJump
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const peakMarkersRef = useRef<PeakMarker[]>([]);
@@ -84,9 +85,131 @@ export function TrendsChart({
 
     const chartW = W - PAD.l - PAD.r;
     const chartH = H - PAD.t - PAD.b;
-    const visibleTypes = (showAll ? topTypes : topTypes.slice(0, 12)).filter(t => activeTypes.has(t));
+    const visibleTypes = topTypes.filter(t => activeTypes.has(t));
     const typeMap    = buildTypeMap(data, effectiveCutoff);
     const typeTotals = buildMonthTotals(data, effectiveCutoff);
+
+    // ── ALL-YEARS CONTINUOUS MODE ──────────────────────────────────────
+    if (showAllYears && allYearsData && allYearsData.size > 0) {
+      // Build sorted year list, each with its own cutoff
+      const sortedYears = [...allYearsData.keys()].sort((a, b) => a - b);
+      const yearCutoffs = new Map<number, number>();
+      for (const yr of sortedYears) {
+        yearCutoffs.set(yr, yr < year ? 11 : (yr === year ? effectiveCutoff : -1));
+      }
+      // Filter out years with no data
+      const activeYears = sortedYears.filter(yr => (yearCutoffs.get(yr) ?? -1) >= 0);
+      const totalPoints = activeYears.reduce((s, yr) => s + (yearCutoffs.get(yr)! + 1), 0);
+
+      // Build per-type continuous value arrays
+      const buildAllYearsVals = (type: string): number[] => {
+        const vals: number[] = [];
+        for (const yr of activeYears) {
+          const cut = yearCutoffs.get(yr)!;
+          const yd = allYearsData.get(yr) ?? [];
+          const tm = buildTypeMap(yd, cut);
+          const tv = tm.get(type) ?? new Array(12).fill(0);
+          for (let m = 0; m <= cut; m++) vals.push(tv[m]);
+        }
+        return vals;
+      };
+      const buildAllYearsTotals = (): number[] => {
+        const vals: number[] = [];
+        for (const yr of activeYears) {
+          const cut = yearCutoffs.get(yr)!;
+          const yd = allYearsData.get(yr) ?? [];
+          const tv = buildMonthTotals(yd, cut);
+          for (let m = 0; m <= cut; m++) vals.push(tv[m]);
+        }
+        return vals;
+      };
+
+      const allTotals = buildAllYearsTotals();
+      let yMax2 = showTotal ? Math.max(...allTotals, 1) : 1;
+      if (!showTotal) {
+        for (const type of visibleTypes) {
+          const vals = buildAllYearsVals(type);
+          yMax2 = Math.max(yMax2, ...vals);
+        }
+      }
+
+      const xForPt = (i: number) => PAD.l + (i / (totalPoints - 1)) * chartW;
+      const yForV  = (v: number) => PAD.t + chartH - (v / yMax2) * chartH;
+
+      // grid
+      ctx.strokeStyle = 'rgba(0,200,220,0.08)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = PAD.t + (i / 4) * chartH;
+        ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + chartW, y); ctx.stroke();
+      }
+      // y labels
+      ctx.fillStyle = 'rgba(0,200,220,0.35)';
+      ctx.font = `600 8px var(--font, monospace)`;
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const val = Math.round((yMax2 * (4 - i)) / 4);
+        const y = PAD.t + (i / 4) * chartH;
+        ctx.fillText(val >= 10000 ? `${Math.round(val / 1000)}k` : val.toLocaleString(), PAD.l - 6, y + 3);
+      }
+
+      // year boundary ticks + labels
+      let ptIdx = 0;
+      for (const yr of activeYears) {
+        const x = xForPt(ptIdx);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,200,220,0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + chartH); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(0,200,220,0.5)';
+        ctx.font = `700 8px var(--font, monospace)`;
+        ctx.textAlign = 'center';
+        ctx.fillText(String(yr), x, H - 8);
+        ctx.restore();
+        ptIdx += yearCutoffs.get(yr)! + 1;
+      }
+
+      // type lines
+      for (const type of visibleTypes) {
+        const vals = buildAllYearsVals(type);
+        const color = getComplaintColor(type);
+        const isHov = hoveredType === type;
+        const isDim = hoveredType !== null && !isHov;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = isDim ? 0.06 : isHov ? 1 : 0.4;
+        ctx.lineWidth = isHov ? 2 : 1;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < vals.length; i++) {
+          const x = xForPt(i); const y = yForV(vals[i]);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // total line
+      if (showTotal) {
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.globalAlpha = hoveredType ? 0.3 : 0.75;
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for (let i = 0; i < allTotals.length; i++) {
+          const x = xForPt(i); const y = yForV(allTotals[i]);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      return; // done with ALL mode
+    }
+    // ── END ALL-YEARS MODE ─────────────────────────────────────────────
 
     // yMax: in normal mode without total line, scale to visible type lines only
     let yMax: number;
@@ -395,7 +518,7 @@ export function TrendsChart({
     const typeMap2 = buildTypeMap(data, effectiveCutoff);
     const totals2  = buildMonthTotals(data, effectiveCutoff);
     const yMax2    = Math.max(...totals2, 1);
-    const visible  = (showAll ? topTypes : topTypes.slice(0, 12)).filter(t => activeTypes.has(t));
+    const visible  = topTypes.filter(t => activeTypes.has(t));
     let closest: string | null = null;
     let closestDist = 14;
     for (const type of visible) {
@@ -447,7 +570,7 @@ export function TrendsChart({
     const m = hitTestMonth(e);
     if (m === null || !onMonthClick) return;
     const typeMap2 = buildTypeMap(data, effectiveCutoff);
-    const visible  = (showAll ? topTypes : topTypes.slice(0, 12)).filter(t => activeTypes.has(t));
+    const visible  = topTypes.filter(t => activeTypes.has(t));
     const rows = visible
       .map(t => ({ type: t, count: typeMap2.get(t)?.[m] ?? 0 }))
       .filter(r => r.count > 0)

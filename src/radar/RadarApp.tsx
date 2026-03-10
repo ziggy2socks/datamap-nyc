@@ -46,13 +46,15 @@ export default function App() {
   const [monthLoading,    setMonthLoading]    = useState(false);
 
   // Trends state
-  const [trendsYear,        setTrendsYear]        = useState(() => new Date().getFullYear());
-  const [trendsData,        setTrendsData]        = useState<MonthCount[]>([]);
-  const [trendsAllData,     setTrendsAllData]     = useState<Map<number, MonthCount[]>>(new Map());
-  const [trendsLoading,     setTrendsLoading]     = useState(false);
-  const [trendsTypes,       setTrendsTypes]       = useState<string[]>([]);
-  const [trendsShowTotal,   setTrendsShowTotal]   = useState(false);
+  const [trendsYear,         setTrendsYear]         = useState(() => new Date().getFullYear());
+  const [trendsData,         setTrendsData]         = useState<MonthCount[]>([]);
+  const [trendsAllData,      setTrendsAllData]      = useState<Map<number, MonthCount[]>>(new Map());
+  const [trendsLoading,      setTrendsLoading]      = useState(false);
+  const [trendsTypes,        setTrendsTypes]        = useState<string[]>([]);
+  const [trendsActiveTypes,  setTrendsActiveTypes]  = useState<Set<string>>(new Set());
+  const [trendsShowTotal,    setTrendsShowTotal]    = useState(false);
   const [trendsCompareYears, setTrendsCompareYears] = useState(false);
+  const [trendsShowAll,      setTrendsShowAll]      = useState(false); // 1Y vs ALL timeline
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -166,7 +168,16 @@ export default function App() {
       }
       const totals = new Map<string, number>();
       for (const r of d) totals.set(r.complaint_type, (totals.get(r.complaint_type) ?? 0) + r.count);
-      setTrendsTypes([...totals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]));
+      const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+      setTrendsTypes(sorted);
+      setTrendsActiveTypes(prev => {
+        // Keep existing toggles if already set, otherwise enable all
+        if (prev.size === 0) return new Set(sorted);
+        // Add any new types that appeared
+        const next = new Set(prev);
+        sorted.forEach(t => { if (!next.has(t)) next.add(t); });
+        return next;
+      });
 
     } catch { /* ignore */ }
     finally { setTrendsLoading(false); }
@@ -599,8 +610,9 @@ export default function App() {
                     year={trendsYear}
                     showAll={true}
                     topTypes={trendsTypes}
-                    activeTypes={activeTypes}
+                    activeTypes={trendsActiveTypes}
                     cutoffMonth={maxDataMonth(trendsYear)}
+                    showAllYears={trendsShowAll}
                     showTotal={trendsShowTotal}
                     compareYears={trendsCompareYears}
                     onMonthJump={async (month) => {
@@ -651,8 +663,6 @@ export default function App() {
                   onClick={() => setTrendsShowTotal(v => !v)}
                   title="Show total line"
                 >TOTAL</button>
-              </div>
-              <div className="vc-col vc-col--left">
                 <button
                   className={`vc-toggle-btn${trendsCompareYears ? ' active' : ''}`}
                   onClick={() => {
@@ -661,7 +671,23 @@ export default function App() {
                     if (next && trendsAllData.size === 0) loadTrends(trendsYear, true);
                   }}
                   title="Compare all years"
-                >COMPARE YEARS</button>
+                >CMP YRS</button>
+              </div>
+              <div className="vc-col vc-col--left">
+                <button
+                  className={`vc-toggle-btn${!trendsShowAll ? ' active' : ''}`}
+                  onClick={() => {
+                    setTrendsShowAll(false);
+                    if (trendsAllData.size === 0) loadTrends(trendsYear, true);
+                  }}
+                >1Y</button>
+                <button
+                  className={`vc-toggle-btn${trendsShowAll ? ' active' : ''}`}
+                  onClick={() => {
+                    setTrendsShowAll(true);
+                    if (trendsAllData.size === 0) loadTrends(trendsYear, true);
+                  }}
+                >ALL</button>
               </div>
               <div className="vc-col vc-col--center">
                 <button className="vc-nav-btn" onClick={() => {
