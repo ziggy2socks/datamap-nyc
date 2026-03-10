@@ -354,11 +354,14 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
     <div className="heatmap-view">
       <div ref={mapDivRef} className="heatmap-map" />
 
-      {/* Loading indicator */}
+      {/* Loading overlay */}
       {loading && (
-        <div className="heatmap-loading">
-          <span className="heatmap-loading-dot" />
-          {loadMsg || 'Loading…'}
+        <div className="heatmap-loading-overlay">
+          <div className="heatmap-loading-box">
+            <div className="heatmap-loading-spinner" />
+            <div className="heatmap-loading-msg">{loadMsg || 'Loading…'}</div>
+            <div className="heatmap-loading-sub">Large datasets may take a moment</div>
+          </div>
         </div>
       )}
 

@@ -244,31 +244,58 @@ html, body, #root {
   background: #020810;
 }
 
-.heatmap-loading {
+.heatmap-loading-overlay {
   position: absolute;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  display: inline-flex;
+  inset: 0;
+  z-index: 30;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(2, 8, 16, 0.9);
-  border: 1px solid rgba(0, 200, 220, 0.2);
-  color: rgba(220, 255, 255, 0.92);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  justify-content: center;
+  background: rgba(2, 8, 16, 0.72);
+  backdrop-filter: blur(3px);
 }
 
-.heatmap-loading-dot {
-  width: 7px;
-  height: 7px;
+.heatmap-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 36px;
+  background: rgba(4, 12, 24, 0.95);
+  border: 1px solid rgba(0, 200, 220, 0.2);
+  border-radius: 14px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  max-width: 280px;
+  text-align: center;
+}
+
+.heatmap-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(0, 200, 220, 0.15);
+  border-top-color: rgba(0, 200, 220, 0.85);
   border-radius: 50%;
-  background: var(--cyan);
-  box-shadow: 0 0 10px rgba(0, 200, 220, 0.8);
+  animation: heatmap-spin 0.8s linear infinite;
+}
+
+@keyframes heatmap-spin {
+  to { transform: rotate(360deg); }
+}
+
+.heatmap-loading-msg {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(0, 200, 220, 0.9);
+  min-height: 16px;
+}
+
+.heatmap-loading-sub {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(180, 220, 230, 0.35);
+  text-transform: uppercase;
 }
 
 .heatmap-type-badge {
