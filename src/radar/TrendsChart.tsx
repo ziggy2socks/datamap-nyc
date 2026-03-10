@@ -343,26 +343,44 @@ export function TrendsChart({
         ctx.restore();
       }
 
-      // current year line — stops at effectiveCutoff, never beyond
+      // current year line — draw only up to effectiveCutoff
+      // Use allYearsData entry for current year if available (avoids stale trendsData)
+      const curYearData = allYearsData.get(year) ?? data;
+      const curYearTotals = buildMonthTotals(curYearData, effectiveCutoff);
       const curColor = YEAR_COLORS[year] ?? '#ffffff';
-      drawLine(typeTotals, curColor, 0.9, 2, false, effectiveCutoff);
+      drawLine(curYearTotals, curColor, 0.9, 2, false, effectiveCutoff);
+      // cutoff shade + marker for current year
+      const cx2 = xForMonth(effectiveCutoff);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      const nextX2 = xForMonth(effectiveCutoff + 0.5);
+      ctx.fillRect(nextX2, PAD.t, xForMonth(11) + 24 - nextX2, chartH);
+      ctx.restore();
       ctx.save();
       ctx.fillStyle = curColor;
       ctx.globalAlpha = 0.9;
       ctx.font = `700 7px var(--font, monospace)`;
       ctx.textAlign = 'right';
-      ctx.fillText(String(year), xForMonth(effectiveCutoff) - 2, yForVal(typeTotals[effectiveCutoff]) - 3);
+      ctx.fillText(String(year), cx2 - 2, yForVal(curYearTotals[effectiveCutoff]) - 3);
       ctx.restore();
 
-      // avg line
+      // avg line — only over complete months (0-11 for past years)
+      // avgCount[m] only counts past years so avg is correct for completed months
       const avgVals = avgTotals.map((t, m) => avgCount[m] > 0 ? t / avgCount[m] : 0);
-      drawLine(avgVals, '#ffffff', 0.4, 1.5, true, 11);
+      // draw avg only through months where we have full-year data (not capped months)
+      const avgCutoff = 11; // avg is always from complete past years
+      drawLine(avgVals, '#ffffff', 0.4, 1.5, true, avgCutoff);
       ctx.save();
       ctx.fillStyle = '#ffffff';
       ctx.globalAlpha = 0.4;
       ctx.font = `600 7px var(--font, monospace)`;
       ctx.textAlign = 'right';
-      ctx.fillText('AVG', xForMonth(11) - 2, yForVal(avgVals[11]) - 5);
+      // label with year range
+      const pastYears = [...allYearsData.keys()].filter(yr => yr < year).sort((a,b) => a - b);
+      const avgLabel = pastYears.length > 0
+        ? `${pastYears[0]}–${String(pastYears[pastYears.length-1]).slice(2)} AVG`
+        : 'AVG';
+      ctx.fillText(avgLabel, xForMonth(11) - 2, yForVal(avgVals[11]) - 5);
       ctx.restore();
     } else {
       // normal trends mode — type lines
