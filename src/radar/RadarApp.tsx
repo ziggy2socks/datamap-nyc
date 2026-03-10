@@ -778,11 +778,18 @@ export default function App() {
 
           {/* ── Trends breakdown — clean type + count rows ── */}
           {feed.length > 0 && feed[0].unique_key.startsWith('trends-') && (() => {
+            const YEAR_COLORS_FEED: Record<number, string> = {
+              2020: '#ff6b6b', 2021: '#ffa94d', 2022: '#a9e34b',
+              2023: '#74c0fc', 2024: '#cc5de8', 2025: '#63e6be', 2026: '#ffffff',
+            };
             const total = (feed as any[]).reduce((s: number, c: any) => s + parseInt(c.descriptor), 0);
             return (feed as any[]).map((c: any) => {
               const count = parseInt(c.descriptor);
               const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
-              const color = getComplaintColor(c.complaint_type);
+              const isYear = /^\d{4}$/.test(c.complaint_type);
+              const color = isYear
+                ? (YEAR_COLORS_FEED[parseInt(c.complaint_type)] ?? 'rgba(0,200,220,0.6)')
+                : getComplaintColor(c.complaint_type);
               return (
                 <div key={c.unique_key} className="feed-item feed-item--trend"
                   style={{ '--item-color': color } as React.CSSProperties}>

@@ -661,6 +661,22 @@ export function TrendsChart({
     // Click on chart area → breakdown feed
     const m = hitTestMonth(e);
     if (m === null || !onMonthClick) return;
+
+    if (compareYears && allYearsData) {
+      // Overlay mode: show total for each year at this month
+      const now3 = new Date().getFullYear();
+      const rows: MonthClickRow[] = [...allYearsData.entries()]
+        .filter(([yr]) => yr < now3)
+        .sort(([a], [b]) => b - a)
+        .map(([yr, yd]) => ({
+          type: String(yr),
+          count: buildMonthTotals(yd, 11)[m],
+        }))
+        .filter(r => r.count > 0);
+      onMonthClick(m, rows);
+      return;
+    }
+
     const typeMap2 = buildTypeMap(data, effectiveCutoff);
     const visible  = topTypes.filter(t => activeTypes.has(t));
     const rows = visible
