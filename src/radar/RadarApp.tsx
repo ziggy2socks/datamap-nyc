@@ -700,31 +700,40 @@ export default function App() {
             </div>
             {/* Controls bar */}
             <div className="view-controls">
-              <div className="vc-col vc-col--left">
-                <button
-                  className={`vc-toggle-btn${trendsShowTotal ? ' active' : ''}`}
-                  onClick={() => setTrendsShowTotal(v => !v)}
-                >TOTAL</button>
-              </div>
+              {/* Tier 1: 1Y | ALL */}
               <div className="vc-col vc-col--left">
                 <button
                   className={`vc-toggle-btn${trendsMode === '1y' ? ' active' : ''}`}
                   onClick={() => setTrendsMode('1y')}
                 >1Y</button>
                 <button
-                  className={`vc-toggle-btn${trendsMode === 'overlay' ? ' active' : ''}`}
+                  className={`vc-toggle-btn${trendsMode !== '1y' ? ' active' : ''}`}
                   onClick={() => {
-                    setTrendsMode('overlay');
-                    if (trendsAllData.size === 0) loadTrends(trendsYear, true);
-                  }}
-                >OVERLAY</button>
-                <button
-                  className={`vc-toggle-btn${trendsMode === 'continuous' ? ' active' : ''}`}
-                  onClick={() => {
-                    setTrendsMode('continuous');
-                    if (trendsAllData.size === 0) loadTrends(trendsYear, true);
+                    if (trendsMode === '1y') {
+                      setTrendsMode('overlay');
+                      if (trendsAllData.size === 0) loadTrends(trendsYear, true);
+                    }
                   }}
                 >ALL</button>
+              </div>
+              {/* Tier 2: sub-toggles */}
+              <div className="vc-col vc-col--left">
+                {trendsMode === '1y' && (
+                  <button
+                    className={`vc-toggle-btn${trendsShowTotal ? ' active' : ''}`}
+                    onClick={() => setTrendsShowTotal(v => !v)}
+                  >TOTAL</button>
+                )}
+                {trendsMode !== '1y' && (<>
+                  <button
+                    className={`vc-toggle-btn${trendsMode === 'overlay' ? ' active' : ''}`}
+                    onClick={() => setTrendsMode('overlay')}
+                  >OVERLAY</button>
+                  <button
+                    className={`vc-toggle-btn${trendsMode === 'continuous' ? ' active' : ''}`}
+                    onClick={() => setTrendsMode('continuous')}
+                  >CONTINUOUS</button>
+                </>)}
               </div>
               <div className="vc-col vc-col--center">
                 {trendsMode !== 'continuous' && (<>
