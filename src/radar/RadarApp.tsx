@@ -368,22 +368,45 @@ export default function App() {
         <div className="filter-section">
           <div className="filter-header">
             <span className="filter-label">COMPLAINT TYPE</span>
-            <button className="filter-all" onClick={toggleAll}>
-              {activeTypes.size === topTypes.length ? 'NONE' : 'ALL'}
-            </button>
+            {viewMode === 'trends' ? (
+              <button className="filter-all" onClick={() => {
+                if (trendsActiveTypes.size === trendsTypes.length) setTrendsActiveTypes(new Set());
+                else setTrendsActiveTypes(new Set(trendsTypes));
+              }}>
+                {trendsActiveTypes.size === trendsTypes.length ? 'NONE' : 'ALL'}
+              </button>
+            ) : (
+              <button className="filter-all" onClick={toggleAll}>
+                {activeTypes.size === topTypes.length ? 'NONE' : 'ALL'}
+              </button>
+            )}
           </div>
           <div className="filter-list">
-            {topTypes.map(type => (
-              <button
-                key={type}
-                className={`filter-chip ${activeTypes.has(type) ? 'active' : ''}`}
-                onClick={() => toggleType(type)}
-                style={{ '--chip-color': getComplaintColor(type) } as React.CSSProperties}
-              >
-                <span className="chip-dot" style={{ background: getComplaintColor(type) }} />
-                <span className="chip-label">{type}</span>
-              </button>
-            ))}
+            {(viewMode === 'trends' ? trendsTypes : topTypes).map(type => {
+              const isActive = viewMode === 'trends' ? trendsActiveTypes.has(type) : activeTypes.has(type);
+              const toggle = () => {
+                if (viewMode === 'trends') {
+                  setTrendsActiveTypes(prev => {
+                    const next = new Set(prev);
+                    if (next.has(type)) next.delete(type); else next.add(type);
+                    return next;
+                  });
+                } else {
+                  toggleType(type);
+                }
+              };
+              return (
+                <button
+                  key={type}
+                  className={`filter-chip ${isActive ? 'active' : ''}`}
+                  onClick={toggle}
+                  style={{ '--chip-color': getComplaintColor(type) } as React.CSSProperties}
+                >
+                  <span className="chip-dot" style={{ background: getComplaintColor(type) }} />
+                  <span className="chip-label">{type}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
