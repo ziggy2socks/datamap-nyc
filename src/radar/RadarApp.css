@@ -369,20 +369,15 @@ html, body, #root {
 .view-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
 .view-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,220,0.08); }
 
-/* ── Radar controls — time + date nav, centered ── */
-.view-controls--radar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  grid-template-columns: unset;
-}
-
 .vc-time {
   font: 700 13px var(--font);
   letter-spacing: 2px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.vc-time--bright {
+  color: var(--cyan);
 }
 
 /* ── Chart tooltip ── */
@@ -764,7 +759,7 @@ html, body, #root {
   .vc-col--center { justify-content: flex-end; }
 
   /* Radar controls on mobile — keep time + nav as one tight unit */
-  .view-controls--radar {
+  .view-controls--radar-unused {
     justify-content: center;
     gap: 8px;
   }

@@ -1,7 +1,7 @@
 /**
  * MonthChart — stacked bar chart for monthly aggregated 311 data.
  * 28-31 bars (one per day), stacked by complaint type.
- * Click a bar to drill into that day.
+ * Click a segment to filter feed; click a day label to jump to that day's chart.
  */
 import { useEffect, useRef, useCallback } from 'react';
 import type { DailyCount } from './complaints';
@@ -13,6 +13,7 @@ interface Props {
   selectedDate: string;
   onHover?: (hit: ChartHit | null, x: number, y: number) => void;
   onSegmentClick?: (hit: ChartHit) => void;
+  onDayClick?: (date: string) => void;
 }
 
 interface HitRegion {
@@ -27,32 +28,29 @@ const PAD_R = 28;
 const PAD_T = 32;
 const PAD_B = 56;
 
-export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Props) {
+export function MonthChart({ data, selectedDate, onHover, onSegmentClick, onDayClick }: Props) {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const containerRef   = useRef<HTMLDivElement>(null);
   const hitRegionsRef  = useRef<HitRegion[]>([]);
 
-  // Pre-compute for render
   const d = new Date(selectedDate + 'T12:00:00');
   const numBars = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 
-  // Global type order — shared pinned order + volume-sorted remainder
   const typeTotals = new Map<string, number>();
   for (const row of data) typeTotals.set(row.complaint_type, (typeTotals.get(row.complaint_type) ?? 0) + row.count);
   const typeOrder = getStackOrder(typeTotals);
 
-  // Bucket by day-of-month (1-indexed → 0-indexed bar)
   const buckets: Map<string, number>[] = Array.from({ length: numBars }, () => new Map());
   for (const row of data) {
     const day = parseInt(row.day.split('-')[2], 10) - 1;
     if (day < 0 || day >= numBars) continue;
     buckets[day].set(row.complaint_type, (buckets[day].get(row.complaint_type) ?? 0) + row.count);
   }
+
   const totals = buckets.map(b => [...b.values()].reduce((a, v) => a + v, 0));
   const rawMax = Math.max(...totals, 1);
   const yMax   = niceMax(rawMax);
 
-  // Draw
   useEffect(() => {
     const canvas    = canvasRef.current;
     const container = containerRef.current;
@@ -74,7 +72,6 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
     const barW   = slotW * 0.60;
     const barOff = (slotW - barW) / 2;
 
-    // Y-axis grid
     ctx.font      = LABEL_FONT;
     ctx.textAlign = 'right';
     for (let i = 0; i <= 4; i++) {
@@ -87,7 +84,6 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
       ctx.fillText(val.toLocaleString(), PAD_L - 8, y + 4);
     }
 
-    // Bars
     const newHits: HitRegion[] = [];
     for (let i = 0; i < numBars; i++) {
       const bucket = buckets[i];
@@ -111,7 +107,6 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
     }
     hitRegionsRef.current = newHits;
 
-    // Baseline
     ctx.strokeStyle = 'rgba(0,200,220,0.2)';
     ctx.lineWidth   = 1;
     ctx.beginPath();
@@ -119,23 +114,22 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
     ctx.lineTo(W - PAD_R, PAD_T + chartH);
     ctx.stroke();
 
-    // X-axis labels (every day)
+    // X-axis day labels — highlighted to hint clickability
     ctx.font      = LABEL_FONT;
-    ctx.fillStyle = 'rgba(0,210,230,0.6)';
     ctx.textAlign = 'center';
     for (let i = 0; i < numBars; i++) {
       const x = PAD_L + i * slotW + slotW / 2;
+      ctx.fillStyle = onDayClick ? 'rgba(0,210,230,0.85)' : 'rgba(0,210,230,0.6)';
       ctx.fillText(`${i + 1}`, x, PAD_T + chartH + 16);
     }
 
-    // Axis label
     ctx.font      = FONT;
     ctx.fillStyle = 'rgba(0,200,220,0.3)';
     ctx.textAlign = 'center';
-    ctx.fillText('DAY OF MONTH  ·  click segment to filter feed', PAD_L + chartW / 2, H - 8);
-
-    // Total rendered by view-meta-float overlay — not drawn here
-
+    ctx.fillText(
+      onDayClick ? 'DAY OF MONTH  ·  click day to open  ·  click bar to filter feed' : 'DAY OF MONTH  ·  click segment to filter feed',
+      PAD_L + chartW / 2, H - 8
+    );
   }, [data, selectedDate]);
 
   const hitTest = useCallback((e: React.MouseEvent<HTMLCanvasElement>): ChartHit | null => {
@@ -155,13 +149,60 @@ export function MonthChart({ data, selectedDate, onHover, onSegmentClick }: Prop
     return null;
   }, []);
 
+  // Hit-test the day label area (below baseline)
+  const hitTestDayLabel = useCallback((e: React.MouseEvent<HTMLCanvasElement>): number | null => {
+    if (!onDayClick) return null;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return null;
+    const rect   = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top)  * scaleY;
+    const W = container.clientWidth || 600;
+    const H = container.clientHeight || 400;
+    const chartW = W - PAD_L - PAD_R;
+    const chartH = H - PAD_T - PAD_B;
+    const labelY = PAD_T + chartH + 8;
+    if (my < labelY || my > labelY + 20) return null;
+    const slotW = chartW / numBars;
+    const barIdx = Math.floor((mx - PAD_L) / slotW);
+    if (barIdx < 0 || barIdx >= numBars) return null;
+    return barIdx;
+  }, [onDayClick, numBars]);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const dayIdx = hitTestDayLabel(e);
+    if (dayIdx !== null && onDayClick) {
+      const date = new Date(selectedDate + 'T12:00:00');
+      const target = new Date(date.getFullYear(), date.getMonth(), dayIdx + 1);
+      const iso = target.toISOString().split('T')[0];
+      onDayClick(iso);
+      return;
+    }
+    const h = hitTest(e);
+    if (h) onSegmentClick?.(h);
+  }, [hitTestDayLabel, hitTest, onDayClick, onSegmentClick, selectedDate]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const dayIdx = hitTestDayLabel(e);
+    if (dayIdx !== null) {
+      if (canvasRef.current) canvasRef.current.style.cursor = 'pointer';
+      onHover?.(null, 0, 0);
+      return;
+    }
+    if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
+    onHover?.(hitTest(e), e.clientX, e.clientY);
+  }, [hitTestDayLabel, hitTest, onHover]);
+
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
       <canvas ref={canvasRef}
         style={{ display: 'block', width: '100%', height: '100%', cursor: 'crosshair' }}
-        onMouseMove={e => onHover?.(hitTest(e), e.clientX, e.clientY)}
+        onMouseMove={handleMouseMove}
         onMouseLeave={() => onHover?.(null, 0, 0)}
-        onClick={e => { const h = hitTest(e); if (h) onSegmentClick?.(h); }}
+        onClick={handleClick}
       />
     </div>
   );

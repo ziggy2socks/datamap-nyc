@@ -46,13 +46,13 @@ export default function App() {
   const [monthLoading,    setMonthLoading]    = useState(false);
 
   // Trends state
-  const [trendsYear,     setTrendsYear]     = useState(() => new Date().getFullYear());
-  const [trendsData,     setTrendsData]     = useState<MonthCount[]>([]);
-  const [trendsAllData,  setTrendsAllData]  = useState<Map<number, MonthCount[]>>(new Map());
-  const [trendsLoading,  setTrendsLoading]  = useState(false);
-  const [trendsShowAll,  setTrendsShowAll]  = useState(false);
-  const [trendsShowYoY,  setTrendsShowYoY]  = useState(false);
-  const [trendsTypes,    setTrendsTypes]    = useState<string[]>([]);
+  const [trendsYear,        setTrendsYear]        = useState(() => new Date().getFullYear());
+  const [trendsData,        setTrendsData]        = useState<MonthCount[]>([]);
+  const [trendsAllData,     setTrendsAllData]     = useState<Map<number, MonthCount[]>>(new Map());
+  const [trendsLoading,     setTrendsLoading]     = useState(false);
+  const [trendsTypes,       setTrendsTypes]       = useState<string[]>([]);
+  const [trendsShowTotal,   setTrendsShowTotal]   = useState(false);
+  const [trendsCompareYears, setTrendsCompareYears] = useState(false);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -167,6 +167,7 @@ export default function App() {
       const totals = new Map<string, number>();
       for (const r of d) totals.set(r.complaint_type, (totals.get(r.complaint_type) ?? 0) + r.count);
       setTrendsTypes([...totals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]));
+
     } catch { /* ignore */ }
     finally { setTrendsLoading(false); }
   }, []);
@@ -178,7 +179,7 @@ export default function App() {
       setChartResolution('day');
     }
     if (mode === 'trends' && trendsData.length === 0) {
-      loadTrends(trendsYear, trendsShowYoY);
+      loadTrends(trendsYear, true);
     }
   };
 
@@ -422,15 +423,20 @@ export default function App() {
                 }}
               />
             </div>
-            {/* Controls bar — live time + date nav */}
-            <div className="view-controls view-controls--radar">
-              <span className="vc-time">{timeStr}</span>
-              <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
-              <span className="vc-date">{dataDate}</span>
-              <button className="vc-nav-btn"
-                onClick={() => switchDate(1)}
-                disabled={selectedDate >= (latestDataDate || maxDataDate())}
-                style={{ opacity: selectedDate >= (latestDataDate || maxDataDate()) ? 0.25 : undefined }}>▶</button>
+            {/* Controls bar — time left, date nav right */}
+            <div className="view-controls">
+              <div className="vc-col vc-col--left">
+                <span className="vc-time vc-time--bright">{timeStr}</span>
+              </div>
+              <div className="vc-col vc-col--left" />
+              <div className="vc-col vc-col--center">
+                <button className="vc-nav-btn" onClick={() => switchDate(-1)}>◀</button>
+                <span className="vc-date">{dataDate}</span>
+                <button className="vc-nav-btn"
+                  onClick={() => switchDate(1)}
+                  disabled={selectedDate >= (latestDataDate || maxDataDate())}
+                  style={{ opacity: selectedDate >= (latestDataDate || maxDataDate()) ? 0.25 : undefined }}>▶</button>
+              </div>
             </div>
           </div>
         )}
@@ -453,6 +459,18 @@ export default function App() {
                   selectedDate={selectedDate}
                   onHover={(hit, x, y) => setTooltip(hit ? { type: hit.type, count: hit.count, totalInBar: hit.totalInBar, barIdx: hit.barIdx, x, y } : null)}
                   onSegmentClick={handleSegmentClick}
+                  onDayClick={async (date) => {
+                    setLoading(true);
+                    setError(null);
+                    try {
+                      const data2 = await fetchComplaintsForDate(date);
+                      if (data2.length > 0) initializeData(data2, date);
+                    } catch { /* ignore */ }
+                    finally {
+                      setLoading(false);
+                      setChartResolution('day');
+                    }
+                  }}
                 />
               )}
               {chartResolution === 'day' && (
@@ -577,14 +595,16 @@ export default function App() {
                 ? <div className="chart-loading">LOADING {trendsYear}…</div>
                 : <TrendsChart
                     data={trendsData}
-                    allYearsData={trendsShowYoY ? trendsAllData : undefined}
+                    allYearsData={trendsAllData.size > 0 ? trendsAllData : undefined}
                     year={trendsYear}
-                    showAll={trendsShowAll}
+                    showAll={true}
                     topTypes={trendsTypes}
+                    activeTypes={activeTypes}
                     cutoffMonth={maxDataMonth(trendsYear)}
+                    showTotal={trendsShowTotal}
+                    compareYears={trendsCompareYears}
                     onMonthClick={(month, rows) => {
                       const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-                      // Push to feed as synthetic complaint-like entries
                       const synth = rows.map((r, i) => ({
                         unique_key: `trends-${trendsYear}-${month}-${i}`,
                         complaint_type: r.type,
@@ -613,21 +633,22 @@ export default function App() {
             {/* Controls bar */}
             <div className="view-controls">
               <div className="vc-col vc-col--left">
-                <button className={`vc-toggle-btn${!trendsShowAll ? ' active' : ''}`}
-                  onClick={() => setTrendsShowAll(false)}>TOP 8</button>
-                <button className={`vc-toggle-btn${trendsShowAll ? ' active' : ''}`}
-                  onClick={() => setTrendsShowAll(true)}>ALL</button>
+                <button
+                  className={`vc-toggle-btn${trendsShowTotal ? ' active' : ''}`}
+                  onClick={() => setTrendsShowTotal(v => !v)}
+                  title="Show total line"
+                >TOTAL</button>
               </div>
               <div className="vc-col vc-col--left">
                 <button
-                  className={`vc-toggle-btn${trendsShowYoY ? ' active' : ''}`}
+                  className={`vc-toggle-btn${trendsCompareYears ? ' active' : ''}`}
                   onClick={() => {
-                    const next = !trendsShowYoY;
-                    setTrendsShowYoY(next);
+                    const next = !trendsCompareYears;
+                    setTrendsCompareYears(next);
                     if (next && trendsAllData.size === 0) loadTrends(trendsYear, true);
                   }}
-                  title="Show all years + 5yr average"
-                >YoY</button>
+                  title="Compare all years"
+                >COMPARE YEARS</button>
               </div>
               <div className="vc-col vc-col--center">
                 <button className="vc-nav-btn" onClick={() => {
@@ -635,7 +656,7 @@ export default function App() {
                   if (yr < 2020) return;
                   setTrendsYear(yr);
                   setTrendsData([]);
-                  loadTrends(yr, trendsShowYoY);
+                  loadTrends(yr, true);
                 }}>◀</button>
                 <span className="vc-date">{trendsYear}</span>
                 <button className="vc-nav-btn"
@@ -646,7 +667,7 @@ export default function App() {
                     if (yr > maxDataYear()) return;
                     setTrendsYear(yr);
                     setTrendsData([]);
-                    loadTrends(yr, trendsShowYoY);
+                    loadTrends(yr, true);
                   }}>▶</button>
               </div>
             </div>
