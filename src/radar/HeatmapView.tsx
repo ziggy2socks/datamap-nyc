@@ -139,7 +139,6 @@ async function fetchAndBucket(
 export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTypes: _onClearTypes, onSelectAll: _onSelectAll }: Props) {
   const mapRef    = useRef<maplibregl.Map | null>(null);
   const mapDivRef = useRef<HTMLDivElement>(null);
-  const popupRef  = useRef<maplibregl.Popup | null>(null);
 
   const [loading,   setLoading]   = useState(false);
   const [loadMsg,   setLoadMsg]   = useState('');
@@ -253,17 +252,9 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
           addHeatLayer('heat-all', gridToGeoJSON(grid), ALL_COLOR, 300);
         }
       } else {
-        // Type mode — one layer per type
-        const prev = new Set((map.getStyle()?.layers??[])
-          .filter(l => l.id.startsWith('heat-type-'))
-          .map(l => l.id.replace('heat-type-','')));
-
-        // Remove deselected
-        for (const t of prev) if (!types.includes(t)) removeLayer(`heat-type-${t}`);
-
-        // Load each new type
+        // Type mode — always clear and reload so time changes are respected
+        clearAllLayers();
         for (const type of types) {
-          if (prev.has(type)) continue; // already loaded for this session
           let where: string;
           if (tm === '5y') {
             where = `complaint_type='${type.replace(/'/g,"\\'")}' AND created_date>='2020-01-01T00:00:00' AND created_date<'2026-01-01T00:00:00'`;
@@ -303,40 +294,29 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-    // Hover tooltip
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'heat-popup' });
-    popupRef.current = popup;
-
     map.on('load', () => {
       load('1y', MAX_YEAR, 0, []);
 
-      // Hover on any heat layer
+      // Hover — update corner HUD, no floating popup
       map.on('mousemove', (e) => {
         const layers = (map.getStyle()?.layers??[])
           .filter(l => l.id.startsWith('heat-'))
           .map(l => l.id);
-        if (!layers.length) return;
+        if (!layers.length) { setHoverInfo(null); return; }
 
         const features = map.queryRenderedFeatures(e.point, { layers });
         if (features.length) {
-          map.getCanvas().style.cursor = 'crosshair';
           const count = features[0]?.properties?.count as number | undefined;
           const layerId = features[0]?.layer?.id ?? '';
           const typeName = layerId.startsWith('heat-type-')
             ? layerId.replace('heat-type-', '')
             : null;
-          const html = typeName
-            ? `<div class="heat-popup-inner"><span class="heat-popup-type" style="color:${getComplaintColor(typeName)}">${typeName}</span><span class="heat-popup-count">${count != null ? count.toLocaleString() : '—'} reports / cell</span></div>`
-            : `<div class="heat-popup-inner"><span class="heat-popup-type">ALL TYPES</span><span class="heat-popup-count">${count != null ? count.toLocaleString() : '—'} reports / cell</span></div>`;
-          popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
           setHoverInfo({ count: count ?? 0, types: typeName ? [typeName] : [] });
         } else {
-          map.getCanvas().style.cursor = '';
-          popup.remove();
           setHoverInfo(null);
         }
       });
-      map.on('mouseleave', () => { popup.remove(); setHoverInfo(null); });
+      map.on('mouseleave', () => setHoverInfo(null));
     });
 
     return () => { map.remove(); mapRef.current = null; };
@@ -415,14 +395,16 @@ export function HeatmapView({ activeTypes, trendsTypes: _trendsTypes, onClearTyp
         <div className="vc-col vc-col--right" />
       </div>
 
-      {/* Hover info strip */}
+      {/* Corner hover HUD — bottom-left, away from nav controls */}
       {hoverInfo && (
-        <div className="heatmap-hover-strip">
-          {hoverInfo.types.length > 0
-            ? <span style={{ color: getComplaintColor(hoverInfo.types[0]) }}>{hoverInfo.types[0]}</span>
-            : <span>ALL TYPES</span>
-          }
-          <span className="heatmap-hover-count">{hoverInfo.count.toLocaleString()} / cell</span>
+        <div className="heatmap-hover-hud">
+          <span className="heatmap-hover-count">{hoverInfo.count.toLocaleString()}</span>
+          <span className="heatmap-hover-label">
+            {hoverInfo.types.length > 0
+              ? <span style={{ color: getComplaintColor(hoverInfo.types[0]) }}>{hoverInfo.types[0]}</span>
+              : 'reports / cell'
+            }
+          </span>
         </div>
       )}
     </div>

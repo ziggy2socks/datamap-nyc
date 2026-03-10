@@ -353,28 +353,34 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.heatmap-hover-strip {
+.heatmap-hover-hud {
   position: absolute;
-  bottom: 56px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 52px;
+  left: 12px;
   z-index: 20;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(2, 8, 16, 0.88);
-  border: 1px solid rgba(0, 200, 220, 0.15);
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: rgba(220, 255, 255, 0.9);
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(2, 8, 16, 0.82);
+  border: 1px solid rgba(0, 200, 220, 0.12);
   pointer-events: none;
 }
 
 .heatmap-hover-count {
-  opacity: 0.55;
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(220, 255, 255, 0.95);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.heatmap-hover-label {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(180, 230, 240, 0.55);
 }
 
 .heatmap-controls {
@@ -388,37 +394,7 @@ html, body, #root {
   backdrop-filter: blur(6px);
 }
 
-/* MapLibre popup override */
-.maplibregl-popup.heat-popup .maplibregl-popup-content {
-  background: rgba(2, 8, 16, 0.92);
-  border: 1px solid rgba(0, 200, 220, 0.18);
-  border-radius: 8px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-}
 
-.maplibregl-popup.heat-popup .maplibregl-popup-tip {
-  display: none;
-}
-
-.heat-popup-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.heat-popup-type {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.heat-popup-count {
-  font-size: 11px;
-  color: rgba(220, 255, 255, 0.7);
-  letter-spacing: 0.04em;
-}
 
 /* Spacer pushes canvas to center of remaining space above controls */
 .view-column-spacer {
