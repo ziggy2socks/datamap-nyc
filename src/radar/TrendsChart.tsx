@@ -92,8 +92,8 @@ export function TrendsChart({
 
     // ── ALL-YEARS CONTINUOUS MODE ──────────────────────────────────────
     if (showAllYears && allYearsData && allYearsData.size > 0) {
-      // Build sorted year list — exclude current year (incomplete)
-      const sortedYears = [...allYearsData.keys()].filter(yr => yr < year).sort((a, b) => a - b);
+      // Build sorted year list — always exclude current calendar year (incomplete)
+      const sortedYears = [...allYearsData.keys()].filter(yr => yr < new Date().getFullYear()).sort((a, b) => a - b);
       const yearCutoffs = new Map<number, number>();
       for (const yr of sortedYears) yearCutoffs.set(yr, 11);
       const activeYears = sortedYears;
@@ -319,8 +319,9 @@ export function TrendsChart({
       const avgTotals = new Array(12).fill(0);
       const avgCount  = new Array(12).fill(0);
 
+      const now2 = new Date().getFullYear();
       for (const [yr, yd] of allYearsData) {
-        if (yr >= year) continue; // only complete past years
+        if (yr >= now2) continue; // always exclude current/future year
         const cut = 11;
         const yt = buildMonthTotals(yd, cut);
         const color = YEAR_COLORS[yr] ?? '#888888';
@@ -353,7 +354,7 @@ export function TrendsChart({
       ctx.font = `600 7px var(--font, monospace)`;
       ctx.textAlign = 'right';
       // label with year range
-      const pastYears = [...allYearsData.keys()].filter(yr => yr < year).sort((a,b) => a - b);
+      const pastYears = [...allYearsData.keys()].filter(yr => yr < new Date().getFullYear()).sort((a,b) => a - b);
       const avgLabel = pastYears.length > 0
         ? `${pastYears[0]}–${String(pastYears[pastYears.length-1]).slice(2)} AVG`
         : 'AVG';

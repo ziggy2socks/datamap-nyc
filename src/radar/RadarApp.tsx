@@ -736,7 +736,7 @@ export default function App() {
                 </>)}
               </div>
               <div className="vc-col vc-col--center">
-                {trendsMode !== 'continuous' && (<>
+                {trendsMode === '1y' ? (<>
                   <button className="vc-nav-btn" onClick={() => {
                     const yr = trendsYear - 1;
                     if (yr < 2020) return;
@@ -755,7 +755,9 @@ export default function App() {
                       setTrendsData([]);
                       loadTrends(yr, true);
                     }}>▶</button>
-                </>)}
+                </>) : (
+                  <span className="vc-date" style={{ opacity: 0.4 }}>2020–2025</span>
+                )}
               </div>
             </div>
           </div>
