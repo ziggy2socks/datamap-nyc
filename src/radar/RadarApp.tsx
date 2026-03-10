@@ -50,7 +50,9 @@ export default function App() {
   const [trendsData,     setTrendsData]     = useState<MonthCount[]>([]);
   const [trendsAllData,  setTrendsAllData]  = useState<Map<number, MonthCount[]>>(new Map());
   const [trendsLoading,  setTrendsLoading]  = useState(false);
-  const [trendsCompareYears, setTrendsCompareYears] = useState(true);
+  const [trendsShowAll,  setTrendsShowAll]  = useState(false);
+  const [trendsShowYoY,  setTrendsShowYoY]  = useState(false);
+  const [trendsTypes,    setTrendsTypes]    = useState<string[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
 
   const [topTypes, setTopTypes] = useState<string[]>([]);
@@ -162,6 +164,9 @@ export default function App() {
         yearsToFetch.forEach((y, i) => m.set(y, rest[i]));
         setTrendsAllData(m);
       }
+      const totals = new Map<string, number>();
+      for (const r of d) totals.set(r.complaint_type, (totals.get(r.complaint_type) ?? 0) + r.count);
+      setTrendsTypes([...totals.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]));
     } catch { /* ignore */ }
     finally { setTrendsLoading(false); }
   }, []);
@@ -173,7 +178,7 @@ export default function App() {
       setChartResolution('day');
     }
     if (mode === 'trends' && trendsData.length === 0) {
-      loadTrends(trendsYear, trendsCompareYears);
+      loadTrends(trendsYear, trendsShowYoY);
     }
   };
 
@@ -572,8 +577,10 @@ export default function App() {
                 ? <div className="chart-loading">LOADING {trendsYear}…</div>
                 : <TrendsChart
                     data={trendsData}
-                    allYearsData={trendsCompareYears ? trendsAllData : undefined}
+                    allYearsData={trendsShowYoY ? trendsAllData : undefined}
                     year={trendsYear}
+                    showAll={trendsShowAll}
+                    topTypes={trendsTypes}
                     cutoffMonth={maxDataMonth(trendsYear)}
                     onMonthClick={(month, rows) => {
                       const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -606,23 +613,29 @@ export default function App() {
             {/* Controls bar */}
             <div className="view-controls">
               <div className="vc-col vc-col--left">
-                <button
-                  className={`vc-toggle-btn${trendsCompareYears ? ' active' : ''}`}
-                  onClick={() => {
-                    setTrendsCompareYears(true);
-                    if (trendsAllData.size === 0) loadTrends(trendsYear, true);
-                  }}
-                  title="Compare years"
-                >COMPARE YEARS</button>
+                <button className={`vc-toggle-btn${!trendsShowAll ? ' active' : ''}`}
+                  onClick={() => setTrendsShowAll(false)}>TOP 8</button>
+                <button className={`vc-toggle-btn${trendsShowAll ? ' active' : ''}`}
+                  onClick={() => setTrendsShowAll(true)}>ALL</button>
               </div>
-              <div className="vc-col vc-col--left" />
+              <div className="vc-col vc-col--left">
+                <button
+                  className={`vc-toggle-btn${trendsShowYoY ? ' active' : ''}`}
+                  onClick={() => {
+                    const next = !trendsShowYoY;
+                    setTrendsShowYoY(next);
+                    if (next && trendsAllData.size === 0) loadTrends(trendsYear, true);
+                  }}
+                  title="Show all years + 5yr average"
+                >YoY</button>
+              </div>
               <div className="vc-col vc-col--center">
                 <button className="vc-nav-btn" onClick={() => {
                   const yr = trendsYear - 1;
                   if (yr < 2020) return;
                   setTrendsYear(yr);
                   setTrendsData([]);
-                  loadTrends(yr, trendsCompareYears);
+                  loadTrends(yr, trendsShowYoY);
                 }}>◀</button>
                 <span className="vc-date">{trendsYear}</span>
                 <button className="vc-nav-btn"
@@ -633,7 +646,7 @@ export default function App() {
                     if (yr > maxDataYear()) return;
                     setTrendsYear(yr);
                     setTrendsData([]);
-                    loadTrends(yr, trendsCompareYears);
+                    loadTrends(yr, trendsShowYoY);
                   }}>▶</button>
               </div>
             </div>

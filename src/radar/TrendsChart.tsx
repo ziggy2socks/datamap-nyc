@@ -1,19 +1,23 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
+import { getComplaintColor } from './complaints';
 import type { MonthCount } from './complaints';
 
 interface MonthClickRow { type: string; count: number; }
 
 interface Props {
   data: MonthCount[];
-  allYearsData?: Map<number, MonthCount[]>;
+  allYearsData?: Map<number, MonthCount[]>; // year → data, for YoY overlay
   year: number;
-  cutoffMonth?: number;
+  showAll: boolean;
+  topTypes: string[];
+  cutoffMonth?: number;   // last valid month (0-based); lines stop here
   onMonthClick?: (month: number, rows: MonthClickRow[]) => void;
 }
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 const PAD = { t: 28, r: 20, b: 36, l: 52 };
 
+// Year colors for YoY overlay — muted, distinct
 const YEAR_COLORS: Record<number, string> = {
   2020: '#ff6b6b',
   2021: '#ffa94d',
@@ -32,23 +36,22 @@ function buildMonthTotals(data: MonthCount[], maxMonth = 11): number[] {
   return totals;
 }
 
-function buildMonthBreakdown(data: MonthCount[], month: number): MonthClickRow[] {
-  return data
-    .filter(r => r.month === month)
-    .map(r => ({ type: r.complaint_type, count: r.count }))
-    .sort((a, b) => b.count - a.count);
+function buildTypeMap(data: MonthCount[], maxMonth = 11): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  for (const r of data) {
+    if (r.month > maxMonth) continue;
+    if (!map.has(r.complaint_type)) map.set(r.complaint_type, new Array(12).fill(0));
+    map.get(r.complaint_type)![r.month] += r.count;
+  }
+  return map;
 }
 
-interface MonthFlag {
-  month: number;
-  label: string;
-  sublabel?: string;
-}
-
-export function TrendsChart({ data, allYearsData, year, cutoffMonth, onMonthClick }: Props) {
+export function TrendsChart({ data, allYearsData, year, showAll, topTypes, cutoffMonth, onMonthClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hovered, setHovered] = useState<{ month: number; x: number; y: number } | null>(null);
+  const [hoveredType, setHoveredType] = useState<string | null>(null);
 
+  // Effective cutoff: if current year use cutoffMonth, otherwise full year (11)
   const effectiveCutoff = cutoffMonth !== undefined ? cutoffMonth : 11;
 
   const draw = useCallback(() => {
@@ -57,7 +60,7 @@ export function TrendsChart({ data, allYearsData, year, cutoffMonth, onMonthClic
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth;
     const H = canvas.clientHeight;
-    canvas.width = W * dpr;
+    canvas.width  = W * dpr;
     canvas.height = H * dpr;
     const ctx = canvas.getContext('2d')!;
     ctx.scale(dpr, dpr);
@@ -65,68 +68,62 @@ export function TrendsChart({ data, allYearsData, year, cutoffMonth, onMonthClic
 
     const chartW = W - PAD.l - PAD.r;
     const chartH = H - PAD.t - PAD.b;
-    const currentTotals = buildMonthTotals(data, effectiveCutoff);
+    const visibleTypes = showAll ? topTypes : topTypes.slice(0, 8);
+    const typeMap    = buildTypeMap(data, effectiveCutoff);
+    const typeTotals = buildMonthTotals(data, effectiveCutoff);
 
-    const comparisonYears = allYearsData
-      ? [...allYearsData.entries()].sort((a, b) => a[0] - b[0])
-      : [[year, data] as [number, MonthCount[]]];
-
-    let yMax = Math.max(...currentTotals.slice(0, effectiveCutoff + 1), 1);
-    const yearTotals = new Map<number, number[]>();
-    for (const [yr, yd] of comparisonYears) {
-      const cut = yr === year ? effectiveCutoff : 11;
-      const totals = buildMonthTotals(yd, cut);
-      yearTotals.set(yr, totals);
-      yMax = Math.max(yMax, ...totals.slice(0, cut + 1));
+    // Y max — use current year data + all years if YoY
+    let yMax = Math.max(...typeTotals.slice(0, effectiveCutoff + 1), 1);
+    if (allYearsData) {
+      for (const [yr, yd] of allYearsData) {
+        const cut = yr === year ? effectiveCutoff : 11;
+        const t = buildMonthTotals(yd, cut);
+        yMax = Math.max(yMax, ...t);
+      }
     }
 
     const xForMonth = (m: number) => PAD.l + (m / 11) * chartW;
-    const yForVal = (v: number) => PAD.t + chartH - (v / yMax) * chartH;
+    const yForVal   = (v: number) => PAD.t + chartH - (v / yMax) * chartH;
 
-    // grid
+    // ── Grid
     ctx.strokeStyle = 'rgba(0,200,220,0.08)';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
       const y = PAD.t + (i / 4) * chartH;
-      ctx.beginPath();
-      ctx.moveTo(PAD.l, y);
-      ctx.lineTo(PAD.l + chartW, y);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + chartW, y); ctx.stroke();
     }
 
-    // y labels
+    // ── Y axis labels
     ctx.fillStyle = 'rgba(0,200,220,0.35)';
     ctx.font = `600 8px var(--font, monospace)`;
     ctx.textAlign = 'right';
     for (let i = 0; i <= 4; i++) {
       const val = Math.round((yMax * (4 - i)) / 4);
-      const y = PAD.t + (i / 4) * chartH;
+      const y   = PAD.t + (i / 4) * chartH;
       ctx.fillText(val >= 10000 ? `${Math.round(val / 1000)}k` : val.toLocaleString(), PAD.l - 6, y + 3);
     }
 
-    // x labels
+    // ── X axis labels
     ctx.textAlign = 'center';
     for (let m = 0; m < 12; m++) {
       const x = xForMonth(m);
       const isPast = m > effectiveCutoff;
-      const isHov = hovered?.month === m;
+      const isHov  = hovered?.month === m;
       ctx.fillStyle = isPast
         ? 'rgba(0,200,220,0.12)'
         : isHov ? 'rgba(0,200,220,0.9)' : 'rgba(0,200,220,0.35)';
-      ctx.fillText(MONTHS[m], x, H - 8);
+      ctx.fillText(MONTHS[m].slice(0, 3), x, H - 8);
       if (isHov && !isPast) {
         ctx.save();
         ctx.strokeStyle = 'rgba(0,200,220,0.2)';
         ctx.setLineDash([3, 4]);
         ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, PAD.t);
-        ctx.lineTo(x, PAD.t + chartH);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + chartH); ctx.stroke();
         ctx.restore();
       }
     }
 
+    // ── Helper: draw a line stopping at maxM
     const drawLine = (vals: number[], color: string, alpha: number, lineWidth: number, dashed: boolean, maxM: number) => {
       if (maxM < 0) return;
       ctx.save();
@@ -145,146 +142,94 @@ export function TrendsChart({ data, allYearsData, year, cutoffMonth, onMonthClic
       ctx.restore();
     };
 
-    // comparison year lines
-    const avgTotals = new Array(12).fill(0);
-    const avgCount = new Array(12).fill(0);
+    // ── YoY overlay — all other years as dim colored lines
+    if (allYearsData) {
+      // Collect totals per month per year for 5yr avg
+      const avgTotals = new Array(12).fill(0);
+      const avgCount  = new Array(12).fill(0);
 
-    for (const [yr, totals] of yearTotals.entries()) {
-      const cut = yr === year ? effectiveCutoff : 11;
-      const isSelected = yr === year;
-      const color = YEAR_COLORS[yr] ?? '#888888';
-      drawLine(totals, color, isSelected ? 0.95 : 0.35, isSelected ? 2.2 : 1.2, false, cut);
-
-      if (yr !== year || cut === 11) {
+      for (const [yr, yd] of allYearsData) {
+        if (yr === year) continue;
+        const cut = 11; // past years always have full data
+        const yt = buildMonthTotals(yd, cut);
+        const color = YEAR_COLORS[yr] ?? '#888888';
+        drawLine(yt, color, 0.25, 1, false, cut);
         for (let m = 0; m <= cut; m++) {
-          avgTotals[m] += totals[m];
+          avgTotals[m] += yt[m];
           avgCount[m]++;
         }
-      }
-
-      const labelMonth = cut;
-      if (labelMonth >= 0) {
+        // Year label at last point
         ctx.save();
         ctx.fillStyle = color;
-        ctx.globalAlpha = isSelected ? 0.9 : 0.45;
+        ctx.globalAlpha = 0.35;
         ctx.font = `600 7px var(--font, monospace)`;
         ctx.textAlign = 'right';
-        ctx.fillText(String(yr), xForMonth(labelMonth) - 2, yForVal(totals[labelMonth]) - 3);
+        ctx.fillText(String(yr), xForMonth(11) - 2, yForVal(yt[11]) - 3);
         ctx.restore();
       }
+
+      // 5-year rolling average line — bright white, medium weight
+      const avgVals = avgTotals.map((t, m) => avgCount[m] > 0 ? t / avgCount[m] : 0);
+      drawLine(avgVals, '#ffffff', 0.4, 1.5, true, 11);
     }
 
-    const avgVals = avgTotals.map((t, m) => avgCount[m] > 0 ? t / avgCount[m] : 0);
-    drawLine(avgVals, '#ffffff', 0.45, 1.5, true, 11);
+    // ── Current year type lines
+    for (const type of visibleTypes) {
+      const vals  = typeMap.get(type) ?? new Array(12).fill(0);
+      const color = getComplaintColor(type);
+      const isHov = hoveredType === type;
+      const isDim = hoveredType !== null && !isHov;
+      drawLine(vals, color, isDim ? 0.08 : isHov ? 1 : 0.45, isHov ? 2 : 1, false, effectiveCutoff);
+    }
 
-    // average label
-    ctx.save();
-    ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha = 0.45;
-    ctx.font = `600 7px var(--font, monospace)`;
-    ctx.textAlign = 'right';
-    ctx.fillText('AVG', xForMonth(11) - 2, yForVal(avgVals[11]) - 3);
-    ctx.restore();
+    // ── Current year total line — bright white, on top
+    drawLine(typeTotals, '#ffffff', hoveredType ? 0.3 : 0.85, 2, false, effectiveCutoff);
 
-    // cutoff marker for incomplete selected year
+    // ── Cutoff marker
     if (effectiveCutoff < 11) {
       const cx = xForMonth(effectiveCutoff);
+      // Shade future area
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       const nextX = xForMonth(effectiveCutoff + 0.5);
       ctx.fillRect(nextX, PAD.t, xForMonth(11) + 20 - nextX, chartH);
+      // Dashed cutoff line
       ctx.strokeStyle = 'rgba(0,200,220,0.4)';
       ctx.setLineDash([3, 5]);
       ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx, PAD.t);
-      ctx.lineTo(cx, PAD.t + chartH);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, PAD.t); ctx.lineTo(cx, PAD.t + chartH); ctx.stroke();
+      // Label
       ctx.fillStyle = 'rgba(0,200,220,0.4)';
       ctx.font = `600 7px var(--font, monospace)`;
       ctx.textAlign = 'left';
       ctx.setLineDash([]);
-      ctx.fillText(`DATA THROUGH ${MONTHS[effectiveCutoff]}`, cx + 4, PAD.t + 10);
+      ctx.fillText('DATA ENDS', cx + 4, PAD.t + 10);
       ctx.restore();
     }
 
-    // flags on selected year
-    const flags: MonthFlag[] = [];
-    let ytdPeakMonth = 0;
-    let ytdPeakVal = -Infinity;
-    for (let m = 0; m <= effectiveCutoff; m++) {
-      const v = currentTotals[m];
-      if (v > ytdPeakVal) {
-        ytdPeakVal = v;
-        ytdPeakMonth = m;
-      }
-
-      const historical = comparisonYears
-        .filter(([yr]) => yr !== year)
-        .map(([yr]) => yearTotals.get(yr)![m])
-        .filter(v2 => v2 > 0);
-      if (historical.length === 0) continue;
-
-      const maxHist = Math.max(...historical);
-      const minHist = Math.min(...historical);
-      const avgHist = historical.reduce((s, n) => s + n, 0) / historical.length;
-      const deltaPct = avgHist > 0 ? ((v - avgHist) / avgHist) * 100 : 0;
-
-      if (v > maxHist) flags.push({ month: m, label: '5Y HIGH' });
-      else if (v < minHist) flags.push({ month: m, label: '5Y LOW' });
-      else if (Math.abs(deltaPct) >= 10) flags.push({ month: m, label: deltaPct > 0 ? 'VS AVG +' : 'VS AVG -', sublabel: `${Math.round(Math.abs(deltaPct))}%` });
-    }
-    flags.push({ month: ytdPeakMonth, label: 'YTD PEAK' });
-
-    const usedFlagMonths = new Set<number>();
-    let flip = false;
-    for (const flag of flags) {
-      if (usedFlagMonths.has(flag.month)) continue;
-      usedFlagMonths.add(flag.month);
-      const x = xForMonth(flag.month);
-      const y = yForVal(currentTotals[flag.month]);
-      const offsetY = flip ? -26 : 18;
-      flip = !flip;
-
-      ctx.save();
-      ctx.fillStyle = '#ffffff';
-      ctx.globalAlpha = 0.95;
-      ctx.beginPath();
-      ctx.arc(x, y, 3.2, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x, y - offsetY);
-      ctx.stroke();
-
-      const textY = y - offsetY - 4;
-      ctx.font = `700 7px var(--font, monospace)`;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText(flag.label, x, textY);
-      if (flag.sublabel) {
-        ctx.font = `600 7px var(--font, monospace)`;
-        ctx.fillStyle = 'rgba(0,200,220,0.7)';
-        ctx.fillText(flag.sublabel, x, textY + 9);
-      }
-      ctx.restore();
-    }
-
-    // hover dot on selected year
+    // ── Hover dots on current year
     if (hovered && hovered.month <= effectiveCutoff) {
       const m = hovered.month;
       ctx.save();
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 0.9;
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(xForMonth(m), yForVal(currentTotals[m]), 4, 0, Math.PI * 2);
+      ctx.arc(xForMonth(m), yForVal(typeTotals[m]), 3.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+      for (const type of visibleTypes) {
+        const vals  = typeMap.get(type) ?? new Array(12).fill(0);
+        const isHov = hoveredType === type;
+        ctx.save();
+        ctx.globalAlpha = isHov ? 1 : hoveredType ? 0.15 : 0.6;
+        ctx.fillStyle = getComplaintColor(type);
+        ctx.beginPath();
+        ctx.arc(xForMonth(m), yForVal(vals[m]), isHov ? 4 : 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
-  }, [data, allYearsData, cutoffMonth, effectiveCutoff, hovered, year]);
+  }, [data, allYearsData, topTypes, showAll, hovered, hoveredType, effectiveCutoff, year]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -305,26 +250,61 @@ export function TrendsChart({ data, allYearsData, year, cutoffMonth, onMonthClic
     const rel = (mx - PAD.l) / chartW;
     if (rel < -0.05 || rel > 1.05) return null;
     const m = Math.max(0, Math.min(11, Math.round(rel * 11)));
-    return m <= effectiveCutoff ? m : null;
+    return m <= effectiveCutoff ? m : null; // don't hover future months
   }, [effectiveCutoff]);
+
+  const hitTestType = useCallback((e: React.MouseEvent<HTMLCanvasElement>): string | null => {
+    if (data.length === 0) return null;
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect    = canvas.getBoundingClientRect();
+    const mx      = e.clientX - rect.left;
+    const my      = e.clientY - rect.top;
+    const W       = canvas.clientWidth;
+    const H       = canvas.clientHeight;
+    const chartW  = W - PAD.l - PAD.r;
+    const chartH  = H - PAD.t - PAD.b;
+    const typeMap = buildTypeMap(data, effectiveCutoff);
+    const totals  = buildMonthTotals(data, effectiveCutoff);
+    const yMax    = Math.max(...totals, 1);
+    const visible = showAll ? topTypes : topTypes.slice(0, 8);
+    let closest: string | null = null;
+    let closestDist = 14;
+    for (const type of visible) {
+      const vals = typeMap.get(type) ?? new Array(12).fill(0);
+      for (let m = 0; m <= effectiveCutoff; m++) {
+        const x = PAD.l + (m / 11) * chartW;
+        const y = PAD.t + chartH - (vals[m] / yMax) * chartH;
+        const dist = Math.hypot(mx - x, my - y);
+        if (dist < closestDist) { closestDist = dist; closest = type; }
+      }
+    }
+    return closest;
+  }, [data, topTypes, showAll, effectiveCutoff]);
 
   const onMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const m = hitTestMonth(e);
+    const t = hitTestType(e);
     setHovered(m !== null ? { month: m, x: e.clientX, y: e.clientY } : null);
+    setHoveredType(t);
   };
-
-  const onMouseLeave = () => setHovered(null);
+  const onMouseLeave = () => { setHovered(null); setHoveredType(null); };
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const m = hitTestMonth(e);
     if (m === null || !onMonthClick) return;
-    onMonthClick(m, buildMonthBreakdown(data, m));
+    const typeMap = buildTypeMap(data, effectiveCutoff);
+    const visible = showAll ? topTypes : topTypes.slice(0, 8);
+    const rows = visible
+      .map(t => ({ type: t, count: typeMap.get(t)?.[m] ?? 0 }))
+      .filter(r => r.count > 0)
+      .sort((a, b) => b.count - a.count);
+    onMonthClick(m, rows);
   };
 
-  const currentTotals = buildMonthTotals(data, effectiveCutoff);
-  const comparisonYears = allYearsData
-    ? [...allYearsData.entries()].sort((a, b) => a[0] - b[0]).map(([yr]) => yr)
-    : [year];
+  const typeMap    = buildTypeMap(data, effectiveCutoff);
+  const typeTotals = buildMonthTotals(data, effectiveCutoff);
+  const visibleTypes = showAll ? topTypes : topTypes.slice(0, 8);
 
   return (
     <div className="trends-wrap">
@@ -336,24 +316,27 @@ export function TrendsChart({ data, allYearsData, year, cutoffMonth, onMonthClic
         onMouseLeave={onMouseLeave}
         onClick={onClick}
       />
+      {/* Hover tooltip — inline, minimal */}
       {hovered && (
         <div className="chart-tooltip trends-tooltip" style={{ left: hovered.x + 14, top: hovered.y - 12 }}>
           <div className="chart-tooltip-bar">{MONTHS[hovered.month]} {year} · click to load feed</div>
           <div className="trends-tooltip-row trends-tooltip-total">
-            <span className="chart-tooltip-dot" style={{ background: YEAR_COLORS[year] ?? '#fff' }} />
-            <span className="trends-tooltip-label">{year}</span>
-            <span className="trends-tooltip-val">{currentTotals[hovered.month].toLocaleString()}</span>
+            <span className="chart-tooltip-dot" style={{ background: '#fff' }} />
+            <span className="trends-tooltip-label">TOTAL</span>
+            <span className="trends-tooltip-val">{typeTotals[hovered.month].toLocaleString()}</span>
           </div>
-          {comparisonYears.filter(yr => yr !== year).map(yr => {
-            const totals = buildMonthTotals(allYearsData?.get(yr) ?? [], 11);
-            return (
-              <div key={yr} className="trends-tooltip-row">
-                <span className="chart-tooltip-dot" style={{ background: YEAR_COLORS[yr] ?? '#888' }} />
-                <span className="trends-tooltip-label">{yr}</span>
-                <span className="trends-tooltip-val">{totals[hovered.month].toLocaleString()}</span>
+          {visibleTypes
+            .map(t => ({ t, v: typeMap.get(t)?.[hovered.month] ?? 0 }))
+            .filter(x => x.v > 0)
+            .sort((a, b) => b.v - a.v)
+            .slice(0, 5)
+            .map(({ t, v }) => (
+              <div key={t} className={`trends-tooltip-row${hoveredType === t ? ' trends-tooltip-row--hov' : ''}`}>
+                <span className="chart-tooltip-dot" style={{ background: getComplaintColor(t) }} />
+                <span className="trends-tooltip-label">{t}</span>
+                <span className="trends-tooltip-val">{v.toLocaleString()}</span>
               </div>
-            );
-          })}
+            ))}
         </div>
       )}
     </div>
