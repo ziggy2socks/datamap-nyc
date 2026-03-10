@@ -3,6 +3,7 @@ import { RadarCanvas } from './RadarCanvas';
 import { BarChart } from './BarChart';
 import { MonthChart } from './MonthChart';
 import { TrendsChart } from './TrendsChart';
+import { HeatmapView } from './HeatmapView';
 import type { ChartMode, ChartHit } from './BarChart';
 import { fetchComplaints, fetchComplaintsForDate, fetchMonthAggregate, fetchComplaintsByType, fetchYearAggregate, getComplaintColor, getTopComplaintTypes } from './complaints';
 import type { DailyCount, MonthCount } from './complaints';
@@ -35,7 +36,7 @@ function maxDataMonth(year: number): number {
   return Math.max(currentMonth - 1, 0);
 }
 
-type ViewMode = 'radar' | 'day' | 'trends';
+type ViewMode = 'radar' | 'day' | 'trends' | 'map';
 
 export default function App() {
   const [viewMode,        setViewMode]        = useState<ViewMode>('radar');
@@ -192,6 +193,9 @@ export default function App() {
     }
     if (mode === 'trends' && trendsData.length === 0) {
       loadTrends(trendsYear, true);
+    }
+    if (mode === 'map' && trendsTypes.length === 0) {
+      loadTrends(trendsYear, false); // load type list without all-years data
     }
   };
 
@@ -363,13 +367,27 @@ export default function App() {
                 <line x1="1" y1="16" x2="17" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.5"/>
               </svg>
             </button>
+            <button className={`view-btn${viewMode === 'map' ? ' active' : ''}`}
+              onClick={() => handleViewChange('map')} title="Heatmap view">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <circle cx="9" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1" opacity="0.8"/>
+                <circle cx="9" cy="7.5" r="2" fill="currentColor" opacity="0.9"/>
+                <path d="M9 13 C9 13 4.5 9.5 4.5 7.5 a4.5 4.5 0 1 1 9 0 C13.5 9.5 9 13 9 13Z"
+                  stroke="currentColor" strokeWidth="0.8" fill="none" opacity="0.4"/>
+                <line x1="3" y1="16" x2="15" y2="16" stroke="currentColor" strokeWidth="0.7" opacity="0.3"/>
+              </svg>
+            </button>
           </div>
         </div>
 
         <div className="filter-section">
           <div className="filter-header">
             <span className="filter-label">COMPLAINT TYPE</span>
-            {viewMode === 'trends' ? (
+            {viewMode === 'map' ? (
+              <button className="filter-all" onClick={() => setTrendsActiveTypes(new Set())}>
+                {trendsActiveTypes.size === 0 ? 'ALL' : 'CLEAR'}
+              </button>
+            ) : viewMode === 'trends' ? (
               <button className="filter-all" onClick={() => {
                 if (trendsActiveTypes.size === trendsTypes.length) setTrendsActiveTypes(new Set());
                 else setTrendsActiveTypes(new Set(trendsTypes));
@@ -382,20 +400,35 @@ export default function App() {
               </button>
             )}
           </div>
+          {viewMode === 'map' && trendsActiveTypes.size >= 4 && (
+            <div className="filter-map-hint">Max 4 types for comparison</div>
+          )}
           <div className="filter-list">
             {(() => {
-              const allList = viewMode === 'trends' ? trendsTypes : topTypes;
-              const visibleList = viewMode === 'trends' && !trendsTypesExpanded
+              const allList = (viewMode === 'trends' || viewMode === 'map') ? trendsTypes : topTypes;
+              const visibleList = (viewMode === 'trends' || viewMode === 'map') && !trendsTypesExpanded
                 ? allList.slice(0, TRENDS_TOP_N)
                 : allList;
               return (<>
                 {visibleList.map(type => {
-                  const isActive = viewMode === 'trends' ? trendsActiveTypes.has(type) : activeTypes.has(type);
+                  const isActive = (viewMode === 'trends' || viewMode === 'map')
+                    ? trendsActiveTypes.has(type)
+                    : activeTypes.has(type);
                   const toggle = () => {
                     if (viewMode === 'trends') {
                       setTrendsActiveTypes(prev => {
                         const next = new Set(prev);
                         if (next.has(type)) next.delete(type); else next.add(type);
+                        return next;
+                      });
+                    } else if (viewMode === 'map') {
+                      setTrendsActiveTypes(prev => {
+                        const next = new Set(prev);
+                        if (next.has(type)) {
+                          next.delete(type);
+                        } else if (next.size < 4) {
+                          next.add(type);
+                        }
                         return next;
                       });
                     } else {
@@ -414,7 +447,7 @@ export default function App() {
                     </button>
                   );
                 })}
-                {viewMode === 'trends' && allList.length > TRENDS_TOP_N && (
+                {(viewMode === 'trends' || viewMode === 'map') && allList.length > TRENDS_TOP_N && (
                   <button
                     className="filter-chip filter-chip--more"
                     onClick={() => setTrendsTypesExpanded(v => !v)}
@@ -762,10 +795,16 @@ export default function App() {
             </div>
           </div>
         )}
+        {viewMode === 'map' && (
+          <HeatmapView
+            activeTypes={trendsActiveTypes}
+            onClearTypes={() => setTrendsActiveTypes(new Set())}
+          />
+        )}
       </div>
 
       {/* ── Right feed (desktop) / persistent mini-feed (mobile) ── */}
-      <div className="feed-panel">
+      <div className={`feed-panel${viewMode === 'map' ? ' feed-panel--hidden' : ''}`}>
         <div className="feed-header">
           {feed.length > 0 && feed[0].unique_key.startsWith('trends-')
             ? `${feed[0].borough} BREAKDOWN`
