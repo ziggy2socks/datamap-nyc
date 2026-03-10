@@ -239,6 +239,10 @@ const YEAR_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours — for current year 
 export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
   const isCurrentYear = year === new Date().getFullYear();
 
+  // For the current year, cap at last COMPLETE month (same logic as maxDataMonth in RadarApp)
+  const now = new Date();
+  const lastCompleteMonth = isCurrentYear ? now.getMonth() - 1 : 11; // 0-based, -1 = last month
+
   // 1. Try static pre-built file (fast — Vercel CDN, <100ms)
   try {
     const res = await fetch(`/data/311_year_${year}.json`, {
@@ -246,11 +250,13 @@ export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
     });
     if (res.ok) {
       const json: { year: number; generated: string; rows: { month: number; type: string; count: number }[] } = await res.json();
-      return json.rows.map(r => ({
-        month: r.month,
-        complaint_type: r.type,
-        count: r.count,
-      }));
+      return json.rows
+        .filter(r => !isCurrentYear || r.month <= lastCompleteMonth)
+        .map(r => ({
+          month: r.month,
+          complaint_type: r.type,
+          count: r.count,
+        }));
     }
   } catch { /* static file not available yet — fall through to Socrata */ }
 
@@ -280,11 +286,13 @@ export async function fetchYearAggregate(year: number): Promise<MonthCount[]> {
   const res = await fetch(`/api/311?${qs}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`311 API ${res.status}`);
   const raw: { month: string; complaint_type: string; cnt: string }[] = await res.json();
-  const data: MonthCount[] = raw.map(r => ({
-    month: new Date(r.month).getMonth(),
-    complaint_type: r.complaint_type,
-    count: parseInt(r.cnt, 10),
-  }));
+  const data: MonthCount[] = raw
+    .map(r => ({
+      month: new Date(r.month).getMonth(),
+      complaint_type: r.complaint_type,
+      count: parseInt(r.cnt, 10),
+    }))
+    .filter(r => !isCurrentYear || r.month <= lastCompleteMonth);
 
   try {
     localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
