@@ -603,6 +603,19 @@ export default function App() {
                     cutoffMonth={maxDataMonth(trendsYear)}
                     showTotal={trendsShowTotal}
                     compareYears={trendsCompareYears}
+                    onMonthJump={async (month) => {
+                      const targetDate = `${trendsYear}-${String(month + 1).padStart(2, '0')}-01`;
+                      setSelectedDate(targetDate);
+                      const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                      setDataDate(`${months[month]} '${String(trendsYear).slice(2)}`);
+                      setViewMode('day');
+                      setChartResolution('month');
+                      setMonthData([]);
+                      setMonthLoading(true);
+                      try { const agg = await fetchMonthAggregate(targetDate); setMonthData(agg); }
+                      catch { /* ignore */ }
+                      finally { setMonthLoading(false); }
+                    }}
                     onMonthClick={(month, rows) => {
                       const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
                       const synth = rows.map((r, i) => ({

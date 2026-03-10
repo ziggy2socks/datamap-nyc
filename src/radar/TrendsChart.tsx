@@ -12,9 +12,10 @@ interface Props {
   topTypes: string[];
   activeTypes: Set<string>;      // from filter chips
   cutoffMonth?: number;
-  showTotal: boolean;            // white total line toggle
-  compareYears: boolean;         // compare-years mode
+  showTotal: boolean;
+  compareYears: boolean;
   onMonthClick?: (month: number, rows: MonthClickRow[]) => void;
+  onMonthJump?: (month: number) => void;  // jump to month chart
 }
 
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -59,7 +60,7 @@ interface PeakMarker {
 
 export function TrendsChart({
   data, allYearsData, year, showAll, topTypes, activeTypes,
-  cutoffMonth, showTotal, compareYears, onMonthClick
+  cutoffMonth, showTotal, compareYears, onMonthClick, onMonthJump
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const peakMarkersRef = useRef<PeakMarker[]>([]);
@@ -87,13 +88,27 @@ export function TrendsChart({
     const typeMap    = buildTypeMap(data, effectiveCutoff);
     const typeTotals = buildMonthTotals(data, effectiveCutoff);
 
-    let yMax = Math.max(...typeTotals.slice(0, effectiveCutoff + 1), 1);
-    if (compareYears && allYearsData) {
-      for (const [yr, yd] of allYearsData) {
-        const cut = yr === year ? effectiveCutoff : 11;
-        const t = buildMonthTotals(yd, cut);
-        yMax = Math.max(yMax, ...t.slice(0, cut + 1));
+    // yMax: in normal mode without total line, scale to visible type lines only
+    let yMax: number;
+    if (compareYears) {
+      yMax = Math.max(...typeTotals.slice(0, effectiveCutoff + 1), 1);
+      if (allYearsData) {
+        for (const [yr, yd] of allYearsData) {
+          const cut = yr < year ? 11 : effectiveCutoff;
+          const t = buildMonthTotals(yd, cut);
+          yMax = Math.max(yMax, ...t.slice(0, cut + 1));
+        }
       }
+    } else if (showTotal) {
+      yMax = Math.max(...typeTotals.slice(0, effectiveCutoff + 1), 1);
+    } else {
+      // scale to the visible type lines, not the (hidden) total
+      let typeMax = 1;
+      for (const type of visibleTypes) {
+        const vals = typeMap.get(type) ?? new Array(12).fill(0);
+        typeMax = Math.max(typeMax, ...vals.slice(0, effectiveCutoff + 1));
+      }
+      yMax = typeMax;
     }
 
     const xForMonth = (m: number) => PAD.l + (m / 11) * chartW;
@@ -117,7 +132,7 @@ export function TrendsChart({
       ctx.fillText(val >= 10000 ? `${Math.round(val / 1000)}k` : val.toLocaleString(), PAD.l - 6, y + 3);
     }
 
-    // x labels
+    // x labels — brighter to hint clickability
     ctx.textAlign = 'center';
     for (let m = 0; m < 12; m++) {
       const x = xForMonth(m);
@@ -125,7 +140,7 @@ export function TrendsChart({
       const isHov  = hovered?.month === m;
       ctx.fillStyle = isPast
         ? 'rgba(0,200,220,0.12)'
-        : isHov ? 'rgba(0,200,220,0.9)' : 'rgba(0,200,220,0.35)';
+        : isHov ? 'rgba(0,200,220,1)' : 'rgba(0,200,220,0.5)';
       ctx.fillText(MONTHS[m].slice(0, 3), x, H - 8);
       if (isHov && !isPast) {
         ctx.save();
@@ -162,7 +177,8 @@ export function TrendsChart({
 
       for (const [yr, yd] of allYearsData) {
         if (yr === year) continue;
-        const cut = 11;
+        // Each year uses its own cutoff: past years full (11), current year uses effectiveCutoff
+        const cut = yr < year ? 11 : effectiveCutoff;
         const yt = buildMonthTotals(yd, cut);
         const color = YEAR_COLORS[yr] ?? '#888888';
         drawLine(yt, color, 0.3, 1, false, cut);
@@ -170,16 +186,17 @@ export function TrendsChart({
           avgTotals[m] += yt[m];
           avgCount[m]++;
         }
+        // year label at last valid data point
         ctx.save();
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.4;
         ctx.font = `600 7px var(--font, monospace)`;
         ctx.textAlign = 'right';
-        ctx.fillText(String(yr), xForMonth(11) - 2, yForVal(yt[11]) - 3);
+        ctx.fillText(String(yr), xForMonth(cut) - 2, yForVal(yt[cut]) - 3);
         ctx.restore();
       }
 
-      // current year line (bright)
+      // current year line — stops at effectiveCutoff, never beyond
       const curColor = YEAR_COLORS[year] ?? '#ffffff';
       drawLine(typeTotals, curColor, 0.9, 2, false, effectiveCutoff);
       ctx.save();
@@ -348,6 +365,22 @@ export function TrendsChart({
     return m <= effectiveCutoff ? m : null;
   }, [effectiveCutoff]);
 
+  // Hit-test the x-axis label row (bottom strip) for month-jump clicks
+  const hitTestMonthLabel = useCallback((e: React.MouseEvent<HTMLCanvasElement>): number | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const H = canvas.clientHeight;
+    if (my < H - PAD.b || my > H) return null;  // only in label strip
+    const chartW = canvas.clientWidth - PAD.l - PAD.r;
+    const rel = (mx - PAD.l) / chartW;
+    if (rel < -0.05 || rel > 1.05) return null;
+    const m = Math.max(0, Math.min(11, Math.round(rel * 11)));
+    return m <= effectiveCutoff ? m : null;
+  }, [effectiveCutoff]);
+
   const hitTestType = useCallback((e: React.MouseEvent<HTMLCanvasElement>): string | null => {
     if (compareYears || data.length === 0) return null;
     const canvas = canvasRef.current;
@@ -404,6 +437,13 @@ export function TrendsChart({
   const onMouseLeave = () => { setHovered(null); setHoveredType(null); setHoveredPeak(null); };
 
   const onClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Click on month label strip → jump to month chart
+    const labelM = hitTestMonthLabel(e);
+    if (labelM !== null && onMonthJump) {
+      onMonthJump(labelM);
+      return;
+    }
+    // Click on chart area → breakdown feed
     const m = hitTestMonth(e);
     if (m === null || !onMonthClick) return;
     const typeMap2 = buildTypeMap(data, effectiveCutoff);
@@ -417,7 +457,6 @@ export function TrendsChart({
 
   const typeMap    = buildTypeMap(data, effectiveCutoff);
   const typeTotals = buildMonthTotals(data, effectiveCutoff);
-  const visibleTypes = (showAll ? topTypes : topTypes.slice(0, 12)).filter(t => activeTypes.has(t));
 
   return (
     <div className="trends-wrap">
@@ -429,59 +468,33 @@ export function TrendsChart({
         onMouseLeave={onMouseLeave}
         onClick={onClick}
       />
-      {hovered && (
-        <div className="chart-tooltip trends-tooltip" style={{ left: hovered.x + 14, top: hovered.y - 12 }}>
-          <div className="chart-tooltip-bar">{MONTHS[hovered.month]} {year} · click to load feed</div>
-          {!compareYears && (
-            <>
-              <div className="trends-tooltip-row trends-tooltip-total">
-                <span className="chart-tooltip-dot" style={{ background: '#fff' }} />
-                <span className="trends-tooltip-label">TOTAL</span>
-                <span className="trends-tooltip-val">{typeTotals[hovered.month].toLocaleString()}</span>
-              </div>
-              {visibleTypes
-                .map(t => ({ t, v: typeMap.get(t)?.[hovered.month] ?? 0 }))
-                .filter(x => x.v > 0)
-                .sort((a, b) => b.v - a.v)
-                .slice(0, 5)
-                .map(({ t, v }) => (
-                  <div key={t} className={`trends-tooltip-row${hoveredType === t ? ' trends-tooltip-row--hov' : ''}`}>
-                    <span className="chart-tooltip-dot" style={{ background: getComplaintColor(t) }} />
-                    <span className="trends-tooltip-label">{t}</span>
-                    <span className="trends-tooltip-val">{v.toLocaleString()}</span>
-                  </div>
-                ))}
-            </>
-          )}
-          {compareYears && (
-            <div className="trends-tooltip-row trends-tooltip-total">
-              <span className="chart-tooltip-dot" style={{ background: YEAR_COLORS[year] ?? '#fff' }} />
-              <span className="trends-tooltip-label">{year}</span>
-              <span className="trends-tooltip-val">{typeTotals[hovered.month].toLocaleString()}</span>
-            </div>
-          )}
-        </div>
-      )}
-      {hoveredPeak && !hovered && (
-        <div
-          className="chart-tooltip trends-tooltip"
-          style={{
-            position: 'fixed',
-            left: hoveredPeak.x + 14,
-            top: hoveredPeak.y - 28,
-            zIndex: 500,
-            pointerEvents: 'none',
-          }}
-        >
-          <div className="chart-tooltip-bar">TYPE PEAK</div>
+      {/* Hover tooltip — minimal: just type + count, or peak info */}
+      {hoveredPeak && (
+        <div className="chart-tooltip trends-tooltip" style={{ left: hoveredPeak.x + 14, top: hoveredPeak.y - 28 }}>
+          <div className="chart-tooltip-bar">5Y PEAK · {MONTHS[hoveredPeak.month]} {hoveredPeak.yearOfPeak}</div>
           <div className="trends-tooltip-row">
             <span className="chart-tooltip-dot" style={{ background: getComplaintColor(hoveredPeak.type) }} />
             <span className="trends-tooltip-label">{hoveredPeak.type}</span>
-          </div>
-          <div className="trends-tooltip-row">
-            <span className="trends-tooltip-label">{MONTHS[hoveredPeak.month]} {hoveredPeak.yearOfPeak}</span>
             <span className="trends-tooltip-val">{hoveredPeak.value.toLocaleString()}</span>
           </div>
+        </div>
+      )}
+      {hovered && !hoveredPeak && (
+        <div className="chart-tooltip trends-tooltip" style={{ left: hovered.x + 14, top: hovered.y - 12 }}>
+          <div className="chart-tooltip-bar">{MONTHS[hovered.month]} {year} · click for breakdown</div>
+          {hoveredType ? (
+            <div className="trends-tooltip-row">
+              <span className="chart-tooltip-dot" style={{ background: getComplaintColor(hoveredType) }} />
+              <span className="trends-tooltip-label">{hoveredType}</span>
+              <span className="trends-tooltip-val">{(typeMap.get(hoveredType)?.[hovered.month] ?? 0).toLocaleString()}</span>
+            </div>
+          ) : (
+            <div className="trends-tooltip-row trends-tooltip-total">
+              <span className="chart-tooltip-dot" style={{ background: compareYears ? (YEAR_COLORS[year] ?? '#fff') : '#fff' }} />
+              <span className="trends-tooltip-label">{compareYears ? String(year) : 'TOTAL'}</span>
+              <span className="trends-tooltip-val">{typeTotals[hovered.month].toLocaleString()}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
