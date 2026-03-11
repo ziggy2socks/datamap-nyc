@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './SuitabilityMap.css';
+import { useAmbientSound } from './useAmbientSound';
 import type { Permit } from './permit-types';
 import {
   fetchPermits,
@@ -46,6 +47,7 @@ export default function PermitMap() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
+  const { started, muted, toggleMute } = useAmbientSound('/nyc-ambient.mp3', 0.25);
 
   // Filter state
   const [dateFrom, setDateFrom] = useState<string>(() => {
@@ -444,6 +446,16 @@ export default function PermitMap() {
           <DetailRow label="Expires" value={formatDate(selectedPermit.expired_date)} />
           <DetailRow label="Filing #" value={selectedPermit.job_filing_number} mono />
         </div>
+      )}
+
+      {/* Ambient mute button */}
+      {started && (
+        <button className="ambient-btn" onClick={toggleMute} title={muted ? 'Unmute' : 'Mute ambient sound'}>
+          {muted
+            ? <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 5H3.5L7 2V12L3.5 9H1V5Z" fill="currentColor" opacity="0.5"/><line x1="9" y1="5" x2="13" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="13" y1="5" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+            : <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 5H3.5L7 2V12L3.5 9H1V5Z" fill="currentColor" opacity="0.7"/><path d="M9 4.5C10.2 5.2 11 6.5 11 8C11 9.5 10.2 10.8 9 11.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" fill="none"/><path d="M10.5 2.5C12.5 3.8 13.5 5.8 13.5 8C13.5 10.2 12.5 12.2 10.5 13.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.5"/></svg>
+          }
+        </button>
       )}
     </div>
   );
