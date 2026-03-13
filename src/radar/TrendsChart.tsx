@@ -31,6 +31,61 @@ const YEAR_COLORS: Record<number, string> = {
   2026: '#ffffff',
 };
 
+// ── Shared peak helpers ───────────────────────────────────────────────────
+
+function findAllTimePeaks(
+  visibleTypes: string[],
+  allYearsData: Map<number, MonthCount[]>,
+  excludeYear?: number  // optional: skip a specific year (e.g. current incomplete year)
+): Map<string, { month: number; year: number; value: number }> {
+  const peaks = new Map<string, { month: number; year: number; value: number }>();
+  for (const type of visibleTypes) {
+    let peakVal = -Infinity, peakMonth = 0, peakYear = 0;
+    for (const [yr, yd] of allYearsData) {
+      if (excludeYear !== undefined && yr === excludeYear) continue;
+      const tmap = buildTypeMap(yd, 11);
+      const vals = tmap.get(type) ?? new Array(12).fill(0);
+      for (let m = 0; m <= 11; m++) {
+        if (vals[m] > peakVal) { peakVal = vals[m]; peakMonth = m; peakYear = yr; }
+      }
+    }
+    if (peakVal > 0) peaks.set(type, { month: peakMonth, year: peakYear, value: peakVal });
+  }
+  return peaks;
+}
+
+function drawDiamond(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number,
+  color: string,
+  filled: boolean,
+  hovered: boolean,
+  yearLabel: string | null
+) {
+  const r = hovered ? 5.5 : 4;
+  ctx.save();
+  ctx.globalAlpha = hovered ? 1 : 0.82;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = filled ? color : '#020810';
+  ctx.lineWidth = hovered ? 2 : 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x,     y - r);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x,     y + r);
+  ctx.lineTo(x - r, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  if (yearLabel) {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = hovered ? 0.95 : 0.65;
+    ctx.font = `${hovered ? 700 : 600} ${hovered ? 8 : 7}px var(--font, monospace)`;
+    ctx.textAlign = 'center';
+    ctx.fillText(yearLabel, x, y - r - 4);
+  }
+  ctx.restore();
+}
+
 function buildMonthTotals(data: MonthCount[], maxMonth = 11): number[] {
   const totals = new Array(12).fill(0);
   for (const r of data) {
@@ -228,6 +283,33 @@ export function TrendsChart({
         ctx.restore();
       }
 
+      // peak markers in continuous mode
+      {
+        const peaks = findAllTimePeaks(visibleTypes, allYearsData);
+        const newMarkers: PeakMarker[] = [];
+        let ptIdx = 0;
+        // Build a lookup: (type, yr, month) → flat index
+        const idxMap = new Map<string, number>();
+        for (const yr of activeYears) {
+          const cut = yearCutoffs.get(yr)!;
+          for (let m = 0; m <= cut; m++) {
+            idxMap.set(`${yr}-${m}`, ptIdx++);
+          }
+        }
+        for (const [type, pk] of peaks) {
+          const flatIdx = idxMap.get(`${pk.year}-${pk.month}`);
+          if (flatIdx === undefined) continue;
+          const x = xForPt(flatIdx);
+          const yd = allYearsData.get(pk.year) ?? [];
+          const tmap = buildTypeMap(yd, 11);
+          const y = yForV((tmap.get(type) ?? new Array(12).fill(0))[pk.month]);
+          const isHov = hoveredPeak?.type === type;
+          drawDiamond(ctx, x, y, getComplaintColor(type), true, isHov, `▲ ${String(pk.year).slice(2)}`);
+          newMarkers.push({ type, month: pk.month, yearOfPeak: pk.year, value: pk.value, x, y });
+        }
+        peakMarkersRef.current = newMarkers;
+      }
+
       return; // done with ALL mode
     }
     // ── END ALL-YEARS MODE ─────────────────────────────────────────────
@@ -360,6 +442,25 @@ export function TrendsChart({
         : 'AVG';
       ctx.fillText(avgLabel, xForMonth(11) - 2, yForVal(avgVals[11]) - 5);
       ctx.restore();
+
+      // peak markers in overlay mode — on each year's own line at peak month
+      {
+        const newMarkers: PeakMarker[] = [];
+        const now2 = new Date().getFullYear();
+        const peaks = findAllTimePeaks(visibleTypes, allYearsData, now2);
+        for (const [type, pk] of peaks) {
+          const yd = allYearsData.get(pk.year) ?? [];
+          const tmap = buildTypeMap(yd, 11);
+          const val = (tmap.get(type) ?? new Array(12).fill(0))[pk.month];
+          const x = xForMonth(pk.month);
+          const y = yForVal(val);
+          const isHov = hoveredPeak?.type === type;
+          drawDiamond(ctx, x, y, getComplaintColor(type), true, isHov,
+            `▲ ${String(pk.year).slice(2)}`);
+          newMarkers.push({ type, month: pk.month, yearOfPeak: pk.year, value: pk.value, x, y });
+        }
+        peakMarkersRef.current = newMarkers;
+      }
     } else {
       // normal trends mode — type lines
       for (const type of visibleTypes) {
@@ -411,42 +512,12 @@ export function TrendsChart({
           newMarkers.push({ type, month: peakMonth, yearOfPeak: peakYear, value: peakVal, x, y });
         }
 
-        // Draw markers
+        // Draw markers using shared helper
         for (const marker of newMarkers) {
           const isHov = hoveredPeak?.type === marker.type;
           const isFromOtherYear = marker.yearOfPeak !== year;
-          const color = getComplaintColor(marker.type);
-          const r = isHov ? 5.5 : 4;
-
-          ctx.save();
-          ctx.globalAlpha = isHov ? 1 : 0.82;
-
-          // Diamond shape for all-time high
-          ctx.strokeStyle = color;
-          ctx.fillStyle = isFromOtherYear ? color : '#020810';
-          ctx.lineWidth = isHov ? 2 : 1.5;
-          ctx.beginPath();
-          ctx.moveTo(marker.x,     marker.y - r);
-          ctx.lineTo(marker.x + r, marker.y);
-          ctx.lineTo(marker.x,     marker.y + r);
-          ctx.lineTo(marker.x - r, marker.y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-
-          // Year label above marker (always show if from another year, show on hover for current year)
-          if (isFromOtherYear || isHov) {
-            ctx.fillStyle = color;
-            ctx.globalAlpha = isHov ? 0.95 : 0.65;
-            ctx.font = `${isHov ? 700 : 600} ${isHov ? 8 : 7}px var(--font, monospace)`;
-            ctx.textAlign = 'center';
-            const label = isFromOtherYear
-              ? `▲ ${String(marker.yearOfPeak).slice(2)}`
-              : '▲ HIGH';
-            ctx.fillText(label, marker.x, marker.y - r - 4);
-          }
-
-          ctx.restore();
+          const label = isFromOtherYear ? `▲ ${String(marker.yearOfPeak).slice(2)}` : (isHov ? '▲ HIGH' : null);
+          drawDiamond(ctx, marker.x, marker.y, getComplaintColor(marker.type), isFromOtherYear, isHov, label);
         }
         peakMarkersRef.current = newMarkers;
       } else {
