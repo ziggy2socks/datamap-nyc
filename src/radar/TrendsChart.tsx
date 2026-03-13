@@ -399,40 +399,53 @@ export function TrendsChart({
 
           if (peakVal <= 0) continue;
 
-          // get position using the correct year's data
-          // only draw if peak is on current year's line (month within cutoff)
-          // We draw peak relative to current year typeMap position if same month exists
-          const currentVals = typeMap.get(type) ?? new Array(12).fill(0);
-          const drawMonth = peakYear === year ? peakMonth : -1;
-          if (drawMonth < 0 || drawMonth > effectiveCutoff) continue;
+          // Draw marker at peakMonth position using current year's y-scale.
+          // If peak month is beyond cutoff (e.g. peak was in Dec but we're in Feb),
+          // skip — there's no line to anchor the marker to.
+          if (peakMonth > effectiveCutoff) continue;
 
-          const x = xForMonth(drawMonth);
-          const y = yForVal(currentVals[drawMonth]);
+          const x = xForMonth(peakMonth);
+          // Use current year's value at that month for y position (so marker sits on the line)
+          const currentVals = typeMap.get(type) ?? new Array(12).fill(0);
+          const y = yForVal(currentVals[peakMonth]);
           newMarkers.push({ type, month: peakMonth, yearOfPeak: peakYear, value: peakVal, x, y });
         }
 
         // Draw markers
         for (const marker of newMarkers) {
           const isHov = hoveredPeak?.type === marker.type;
+          const isFromOtherYear = marker.yearOfPeak !== year;
           const color = getComplaintColor(marker.type);
+          const r = isHov ? 5.5 : 4;
+
           ctx.save();
+          ctx.globalAlpha = isHov ? 1 : 0.82;
+
+          // Diamond shape for all-time high
           ctx.strokeStyle = color;
-          ctx.fillStyle = '#020810';
+          ctx.fillStyle = isFromOtherYear ? color : '#020810';
           ctx.lineWidth = isHov ? 2 : 1.5;
-          ctx.globalAlpha = isHov ? 1 : 0.75;
           ctx.beginPath();
-          ctx.arc(marker.x, marker.y, isHov ? 5 : 3.5, 0, Math.PI * 2);
+          ctx.moveTo(marker.x,     marker.y - r);
+          ctx.lineTo(marker.x + r, marker.y);
+          ctx.lineTo(marker.x,     marker.y + r);
+          ctx.lineTo(marker.x - r, marker.y);
+          ctx.closePath();
           ctx.fill();
           ctx.stroke();
 
-          // small tick above
-          ctx.strokeStyle = color;
-          ctx.globalAlpha = isHov ? 0.8 : 0.4;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(marker.x, marker.y - (isHov ? 6 : 4));
-          ctx.lineTo(marker.x, marker.y - (isHov ? 12 : 7));
-          ctx.stroke();
+          // Year label above marker (always show if from another year, show on hover for current year)
+          if (isFromOtherYear || isHov) {
+            ctx.fillStyle = color;
+            ctx.globalAlpha = isHov ? 0.95 : 0.65;
+            ctx.font = `${isHov ? 700 : 600} ${isHov ? 8 : 7}px var(--font, monospace)`;
+            ctx.textAlign = 'center';
+            const label = isFromOtherYear
+              ? `▲ ${String(marker.yearOfPeak).slice(2)}`
+              : '▲ HIGH';
+            ctx.fillText(label, marker.x, marker.y - r - 4);
+          }
+
           ctx.restore();
         }
         peakMarkersRef.current = newMarkers;
@@ -702,7 +715,10 @@ export function TrendsChart({
       {/* Hover tooltip — minimal: just type + count, or peak info */}
       {hoveredPeak && (
         <div className="chart-tooltip trends-tooltip" style={{ left: hoveredPeak.x + 14, top: hoveredPeak.y - 28 }}>
-          <div className="chart-tooltip-bar">5Y PEAK · {MONTHS[hoveredPeak.month]} {hoveredPeak.yearOfPeak}</div>
+          <div className="chart-tooltip-bar">
+            ◆ ALL-TIME HIGH · {MONTHS[hoveredPeak.month]} {hoveredPeak.yearOfPeak}
+            {hoveredPeak.yearOfPeak !== year ? ` (not ${year})` : ''}
+          </div>
           <div className="trends-tooltip-row">
             <span className="chart-tooltip-dot" style={{ background: getComplaintColor(hoveredPeak.type) }} />
             <span className="trends-tooltip-label">{hoveredPeak.type}</span>
