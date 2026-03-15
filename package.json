@@ -14,13 +14,15 @@
     "@tailwindcss/vite": "^4.2.1",
     "@types/openseadragon": "^5.0.2",
     "@types/react-window": "^1.8.8",
+    "@types/three": "^0.183.1",
     "maplibre-gl": "^5.19.0",
     "openseadragon": "^6.0.1",
     "pmtiles": "^4.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-window": "^1.8.11",
-    "tailwindcss": "^4.2.1"
+    "tailwindcss": "^4.2.1",
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

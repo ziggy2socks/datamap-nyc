@@ -1,0 +1,255 @@
+/* ── Globe shell ──────────────────────────────────────────────────────────── */
+.globe-shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: #000408;
+  overflow: hidden;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.globe-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Loading / error overlays ─────────────────────────────────────────────── */
+.globe-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 4, 8, 0.85);
+  z-index: 10;
+}
+
+.globe-loading {
+  text-align: center;
+  color: rgba(150, 220, 255, 0.9);
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.globe-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(100, 180, 240, 0.2);
+  border-top-color: rgba(100, 180, 240, 0.9);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.globe-progress-bar {
+  width: 180px;
+  height: 3px;
+  background: rgba(100, 180, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.globe-progress-fill {
+  height: 100%;
+  background: rgba(100, 200, 255, 0.8);
+  transition: width 0.3s ease;
+  border-radius: 2px;
+}
+
+.globe-loading-sub {
+  font-size: 11px;
+  color: rgba(150, 200, 240, 0.5);
+  letter-spacing: 0.05em;
+}
+
+.globe-error {
+  text-align: center;
+  color: rgba(255, 160, 100, 0.9);
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.globe-error-sub {
+  font-size: 12px;
+  color: rgba(255, 200, 150, 0.7);
+}
+
+.globe-error code {
+  background: rgba(255,255,255,0.08);
+  padding: 2px 6px;
+}
+
+.globe-error-detail {
+  font-size: 10px;
+  color: rgba(255, 180, 130, 0.45);
+}
+
+/* ── HUD elements ─────────────────────────────────────────────────────────── */
+.globe-hud-title {
+  position: absolute;
+  top: 28px;
+  left: 32px;
+  pointer-events: none;
+}
+
+.globe-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(100, 180, 255, 0.65);
+  margin-bottom: 4px;
+}
+
+.globe-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: rgba(220, 240, 255, 0.92);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.globe-hud-date {
+  position: absolute;
+  top: 28px;
+  right: 32px;
+  text-align: right;
+  pointer-events: none;
+}
+
+.globe-date-label {
+  font-size: 22px;
+  font-weight: 600;
+  color: rgba(220, 240, 255, 0.88);
+  letter-spacing: 0.02em;
+}
+
+.globe-week-label {
+  font-size: 11px;
+  color: rgba(140, 200, 240, 0.45);
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────────── */
+.globe-controls {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(0, 8, 20, 0.7);
+  border: 1px solid rgba(100, 180, 255, 0.12);
+  padding: 10px 18px;
+  backdrop-filter: blur(8px);
+}
+
+.globe-play-btn {
+  background: none;
+  border: 1px solid rgba(100, 180, 255, 0.3);
+  color: rgba(180, 220, 255, 0.9);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 10px;
+  line-height: 1;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.globe-play-btn:hover {
+  border-color: rgba(100, 180, 255, 0.7);
+  color: #fff;
+}
+
+.globe-scrubber {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 260px;
+  height: 3px;
+  background: rgba(100, 180, 255, 0.15);
+  outline: none;
+  border-radius: 2px;
+}
+
+.globe-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(100, 200, 255, 0.9);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(100, 200, 255, 0.6);
+}
+
+.globe-scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(100, 200, 255, 0.9);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px rgba(100, 200, 255, 0.6);
+}
+
+/* ── Legend ───────────────────────────────────────────────────────────────── */
+.globe-legend {
+  position: absolute;
+  bottom: 28px;
+  left: 32px;
+}
+
+.globe-legend-bar {
+  width: 200px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to right,
+    rgb(20,40,120),
+    rgb(80,150,230),
+    rgb(160,220,255),
+    rgb(180,240,180),
+    rgb(255,240,100),
+    rgb(255,160,40),
+    rgb(220,20,60)
+  );
+  margin-bottom: 6px;
+}
+
+.globe-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 200px;
+  font-size: 10px;
+  color: rgba(160, 210, 240, 0.55);
+  letter-spacing: 0.04em;
+}
+
+/* ── Tip ──────────────────────────────────────────────────────────────────── */
+.globe-tip {
+  position: absolute;
+  bottom: 28px;
+  right: 32px;
+  font-size: 10px;
+  color: rgba(140, 200, 240, 0.35);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .globe-hud-title { top: 16px; left: 16px; }
+  .globe-title { font-size: 24px; }
+  .globe-hud-date { top: 16px; right: 16px; }
+  .globe-date-label { font-size: 16px; }
+  .globe-scrubber { width: 160px; }
+  .globe-controls { bottom: 52px; padding: 8px 12px; gap: 10px; }
+  .globe-legend { bottom: 16px; left: 16px; }
+  .globe-tip { display: none; }
+}

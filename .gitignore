@@ -10,3 +10,6 @@ public/data/parcels.pmtiles
 
 # Keep school zone GeoJSONs (small enough for git)
 # public/data/school_zones_*.geojson — committed directly
+data/era5-raw/
+public/data/soil_globe_2024.json
+public/data/soil_globe_manifest.json

@@ -59,6 +59,12 @@ export default function Landing() {
       <div className="landing-content">
         <div className="landing-crane">🏗️</div>
         <div className="landing-text">coming soon</div>
+        <nav className="landing-nav">
+          <a href="/311" className="landing-nav-link">311 Radar</a>
+          <a href="/suitability" className="landing-nav-link">Suitability</a>
+          <a href="/permits" className="landing-nav-link">Permits</a>
+          <a href="/globe" className="landing-nav-link landing-nav-new">🌍 Frost Globe</a>
+        </nav>
       </div>
       {started && (
         <button className="landing-audio" onClick={toggle}>

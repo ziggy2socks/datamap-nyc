@@ -16,15 +16,19 @@ async function render() {
   } else if (path.startsWith('/permits')) {
     const mod = await import('./permits/PermitsApp');
     Component = mod.default;
+  } else if (path.startsWith('/globe')) {
+    const mod = await import('./globe/GlobeApp');
+    Component = mod.default;
   } else {
     const mod = await import('./Landing');
     Component = mod.default;
   }
 
+  // StrictMode intentionally disabled for Three.js routes — double-invoke tears down WebGL context
+  const useStrict = !path.startsWith('/globe');
+  const el = <Component />;
   createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <Component />
-    </StrictMode>,
+    useStrict ? <StrictMode>{el}</StrictMode> : el
   );
 }
 
