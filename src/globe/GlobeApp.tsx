@@ -3,45 +3,43 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import './GlobeApp.css';
 
-// ── Binary file format ────────────────────────────────────────────────────────
-// [4 bytes: header length uint32 LE][JSON header][raw bytes: weeks × H × W uint8]
-// uint8 value: 0-254 = temp remapped to [temp_min, temp_max], 255 = ocean/no-data
-
+// ── Binary format ─────────────────────────────────────────────────────────────
 interface GlobeHeader {
-  year: number;
-  width: number;
-  height: number;
-  weeks: number;
-  temp_min: number;
-  temp_max: number;
-  ocean_sentinel: number;
-  dates: string[];
+  year: number; width: number; height: number; weeks: number;
+  temp_min: number; temp_max: number; ocean_sentinel: number; dates: string[];
+}
+interface GlobeData { header: GlobeHeader; pixels: Uint8Array; }
+
+// ── Threshold definitions ─────────────────────────────────────────────────────
+interface Threshold {
+  id: string; label: string; temp_c: number;
+  color: string; lineWidth: number; defaultOn: boolean; description: string;
 }
 
-interface GlobeData {
-  header: GlobeHeader;
-  pixels: Uint8Array; // weeks × height × width
-}
-
-// ── Color ramp ────────────────────────────────────────────────────────────────
-// Maps uint8 0-254 → RGBA. 255 = ocean → transparent black.
-// Temp range: -55°C (0) → +50°C (254)
-
-const COLOR_STOPS: { v: number; r: number; g: number; b: number }[] = [
-  { v: 0,   r: 10,  g: 20,  b: 80  },  // -55°C deep polar
-  { v: 50,  r: 30,  g: 80,  b: 180 },  // -33°C frozen
-  { v: 90,  r: 60,  g: 140, b: 220 },  // -18°C cold
-  { v: 115, r: 140, g: 210, b: 255 },  // -7°C  near-frost
-  { v: 120, r: 200, g: 235, b: 255 },  // -3°C  frost band bright
-  { v: 125, r: 220, g: 245, b: 255 },  // 0°C   frost line peak — near white-cyan
-  { v: 130, r: 190, g: 235, b: 200 },  // +3°C  just above frost
-  { v: 150, r: 160, g: 220, b: 140 },  // +14°C cool green
-  { v: 175, r: 240, g: 230, b: 80  },  // +28°C warm yellow
-  { v: 210, r: 255, g: 150, b: 30  },  // +43°C hot orange
-  { v: 254, r: 220, g: 30,  b: 30  },  // +50°C extreme red
+const THRESHOLDS: Threshold[] = [
+  { id: 'frost',    label: 'Frost line',       temp_c: 0,  color: '#ff3cff', lineWidth: 1.8, defaultOn: true,  description: '0°C — soil freezing threshold' },
+  { id: 'crocus',   label: 'Crocus emergence', temp_c: 5,  color: '#00cfff', lineWidth: 1.5, defaultOn: false, description: '5°C / 41°F — earliest spring signal' },
+  { id: 'bulb',     label: 'Bulb awakening',   temp_c: 10, color: '#00e87a', lineWidth: 1.5, defaultOn: false, description: '10°C / 50°F — tulips & daffodils break dormancy' },
+  { id: 'planting', label: 'Planting window',  temp_c: 13, color: '#ffe600', lineWidth: 1.5, defaultOn: false, description: '13°C / 55°F — fall bulb planting; tomato transplant zone' },
+  { id: 'corn',     label: 'Corn belt',        temp_c: 18, color: '#ff8c00', lineWidth: 1.5, defaultOn: false, description: '18°C / 64°F — optimal corn germination' },
+  { id: 'heat',     label: 'Heat stress',      temp_c: 35, color: '#ff1a1a', lineWidth: 1.5, defaultOn: false, description: '35°C / 95°F — crops under heat stress' },
 ];
 
-// Pre-build 256-entry RGBA lookup table
+// ── Color ramp ────────────────────────────────────────────────────────────────
+const COLOR_STOPS: { v: number; r: number; g: number; b: number }[] = [
+  { v: 0,   r: 10,  g: 20,  b: 80  },
+  { v: 50,  r: 30,  g: 80,  b: 180 },
+  { v: 90,  r: 60,  g: 140, b: 220 },
+  { v: 115, r: 140, g: 210, b: 255 },
+  { v: 120, r: 200, g: 235, b: 255 },
+  { v: 125, r: 220, g: 245, b: 255 },
+  { v: 130, r: 190, g: 235, b: 200 },
+  { v: 150, r: 160, g: 220, b: 140 },
+  { v: 175, r: 240, g: 230, b: 80  },
+  { v: 210, r: 255, g: 150, b: 30  },
+  { v: 254, r: 220, g: 30,  b: 30  },
+];
+
 const LUMA = new Uint8ClampedArray(256 * 4);
 for (let i = 0; i < 255; i++) {
   let lo = COLOR_STOPS[0], hi = COLOR_STOPS[1];
@@ -49,44 +47,253 @@ for (let i = 0; i < 255; i++) {
     if (i >= COLOR_STOPS[s].v && i <= COLOR_STOPS[s + 1].v) { lo = COLOR_STOPS[s]; hi = COLOR_STOPS[s + 1]; break; }
   }
   const f = lo.v === hi.v ? 0 : (i - lo.v) / (hi.v - lo.v);
-  LUMA[i * 4]     = Math.round(lo.r + (hi.r - lo.r) * f);
-  LUMA[i * 4 + 1] = Math.round(lo.g + (hi.g - lo.g) * f);
-  LUMA[i * 4 + 2] = Math.round(lo.b + (hi.b - lo.b) * f);
-  LUMA[i * 4 + 3] = 255;
+  LUMA[i*4]   = Math.round(lo.r + (hi.r - lo.r) * f);
+  LUMA[i*4+1] = Math.round(lo.g + (hi.g - lo.g) * f);
+  LUMA[i*4+2] = Math.round(lo.b + (hi.b - lo.b) * f);
+  LUMA[i*4+3] = 255;
 }
-// 255 = ocean: transparent
-LUMA[255 * 4 + 3] = 0;
+LUMA[255*4+3] = 0;
 
-// ── Draw one frame to ImageData ───────────────────────────────────────────────
+const TEMP_MIN = -55, TEMP_RANGE = 105;
+function tempToU8(t: number): number { return Math.round((t - TEMP_MIN) / TEMP_RANGE * 254); }
+
+// ── Draw temperature texture ──────────────────────────────────────────────────
 function drawFrame(pixels: Uint8Array, frameIdx: number, w: number, h: number, imgData: ImageData) {
   const offset = frameIdx * w * h;
   const out = imgData.data;
   for (let i = 0; i < w * h; i++) {
-    const v = pixels[offset + i];
-    const src = v * 4;
-    const dst = i * 4;
-    out[dst]     = LUMA[src];
-    out[dst + 1] = LUMA[src + 1];
-    out[dst + 2] = LUMA[src + 2];
-    out[dst + 3] = LUMA[src + 3];
+    const v = pixels[offset + i], src = v * 4, dst = i * 4;
+    out[dst] = LUMA[src]; out[dst+1] = LUMA[src+1]; out[dst+2] = LUMA[src+2]; out[dst+3] = LUMA[src+3];
   }
+}
+
+// ── lat/lon → unit sphere xyz ─────────────────────────────────────────────────
+// dataSphere has rotation.y = Math.PI to fix equirectangular UV alignment,
+// so contour points need the same rotation applied (negate x and z).
+function latLonToSphere(lat: number, lon: number): THREE.Vector3 {
+  const phi   = (90 - lat) * Math.PI / 180;
+  const theta = (lon + 180) * Math.PI / 180;
+  // Base coords
+  const x = -Math.sin(phi) * Math.cos(theta);
+  const y =  Math.cos(phi);
+  const z =  Math.sin(phi) * Math.sin(theta);
+  // Apply rotation.y = Math.PI: x → -x, z → -z
+  return new THREE.Vector3(-x, y, -z);
+}
+
+// ── Extract contour segments via marching squares ────────────────────────────
+// Works on the downsampled grid (every STEP pixels) to produce clean polylines.
+// Returns array of polyline segments, each as array of THREE.Vector3 on unit sphere.
+function extractContourSegments(
+  pixels: Uint8Array,
+  frameIdx: number,
+  w: number, h: number,
+  u8target: number
+): THREE.Vector3[][] {
+  const offset = frameIdx * w * h;
+  const OCEAN  = 255;
+  const STEP   = 2; // sample every 2 pixels — smooth but not too slow
+
+  // Helper: get value at pixel, treating ocean as NaN-equivalent (use -999)
+  function val(px: number, py: number): number {
+    const ix = Math.min(w - 1, Math.max(0, Math.round(px)));
+    const iy = Math.min(h - 1, Math.max(0, Math.round(py)));
+    const v  = pixels[offset + iy * w + ix];
+    return v === OCEAN ? -999 : v;
+  }
+
+  // Convert texture pixel coords to lat/lon
+  function pixToLatLon(px: number, py: number): [number, number] {
+    const lon = px * 0.5 - 179.75;
+    const lat = 89.75 - py * 0.5;
+    return [lat, lon];
+  }
+
+  // Build edge crossing map: for each cell (gx, gy), find horizontal & vertical crossings
+  // Each crossing = fractional pixel position where temp == u8target
+  // Store as Map: "gx,gy,dir" → [tx, ty] crossing point
+
+  type EdgeKey = string;
+  const edgeCrossings = new Map<EdgeKey, [number, number]>();
+
+  const gw = Math.floor(w / STEP);
+  const gh = Math.floor(h / STEP);
+
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const px = gx * STEP, py = gy * STEP;
+
+      // Horizontal edge: (gx,gy) → (gx+1, gy)
+      if (gx < gw - 1) {
+        const vL = val(px, py), vR = val(px + STEP, py);
+        if (vL !== -999 && vR !== -999 && (vL < u8target) !== (vR < u8target)) {
+          // Interpolate exact crossing position
+          const t = (u8target - vL) / (vR - vL);
+          edgeCrossings.set(`h,${gx},${gy}`, [px + t * STEP, py]);
+        }
+      }
+
+      // Vertical edge: (gx,gy) → (gx, gy+1)
+      if (gy < gh - 1) {
+        const vT = val(px, py), vB = val(px, py + STEP);
+        if (vT !== -999 && vB !== -999 && (vT < u8target) !== (vB < u8target)) {
+          const t = (u8target - vT) / (vB - vT);
+          edgeCrossings.set(`v,${gx},${gy}`, [px, py + t * STEP]);
+        }
+      }
+    }
+  }
+
+  if (edgeCrossings.size === 0) return [];
+
+  // Chain edges into polylines using marching squares connectivity
+  // For each cell, determine which edges are crossed and connect pairs
+  // Marching squares: 4 corners, 16 cases, connect crossing edges pairwise
+
+  const segments: THREE.Vector3[][] = [];
+  const usedEdges = new Set<EdgeKey>();
+
+  function getEdge(key: EdgeKey): [number, number] | undefined {
+    return edgeCrossings.get(key);
+  }
+
+  // For each cell, find its active edges and chain them
+  // Collect all active edge pairs per cell
+  const cellEdgePairs: Array<[EdgeKey, EdgeKey]> = [];
+
+  for (let gy = 0; gy < gh - 1; gy++) {
+    for (let gx = 0; gx < gw - 1; gx++) {
+      const px = gx * STEP, py = gy * STEP;
+      const tl = val(px,        py);
+      const tr = val(px + STEP, py);
+      const bl = val(px,        py + STEP);
+      const br = val(px + STEP, py + STEP);
+
+      // Skip cells with ocean
+      if (tl === -999 || tr === -999 || bl === -999 || br === -999) continue;
+
+      const corners = [
+        (tl < u8target) ? 1 : 0,
+        (tr < u8target) ? 1 : 0,
+        (br < u8target) ? 1 : 0,
+        (bl < u8target) ? 1 : 0,
+      ];
+      const caseIdx = corners[0]*8 + corners[1]*4 + corners[2]*2 + corners[3];
+
+      // Edge keys: top=h,gx,gy  right=v,gx+1,gy  bottom=h,gx,gy+1  left=v,gx,gy
+      const top    = `h,${gx},${gy}`;
+      const right  = `v,${gx+1},${gy}`;
+      const bottom = `h,${gx},${gy+1}`;
+      const left   = `v,${gx},${gy}`;
+
+      // 16 marching squares cases → edge pairs to connect
+      const connections: [EdgeKey, EdgeKey][] = [];
+      switch (caseIdx) {
+        case 1:  case 14: connections.push([bottom, left]);   break;
+        case 2:  case 13: connections.push([right,  bottom]); break;
+        case 3:  case 12: connections.push([right,  left]);   break;
+        case 4:  case 11: connections.push([top,    right]);  break;
+        case 5:           connections.push([top,    left], [right, bottom]); break;
+        case 6:  case 9:  connections.push([top,    bottom]); break;
+        case 7:  case 8:  connections.push([top,    left]);   break;
+        case 10:          connections.push([top,    right], [bottom, left]); break;
+      }
+
+      for (const pair of connections) {
+        if (edgeCrossings.has(pair[0]) && edgeCrossings.has(pair[1])) {
+          cellEdgePairs.push(pair);
+        }
+      }
+    }
+  }
+
+  // Build adjacency: edge → list of edges it connects to
+  const adj = new Map<EdgeKey, EdgeKey[]>();
+  for (const [a, b] of cellEdgePairs) {
+    if (!adj.has(a)) adj.set(a, []);
+    if (!adj.has(b)) adj.set(b, []);
+    adj.get(a)!.push(b);
+    adj.get(b)!.push(a);
+  }
+
+  // Walk chains starting from unvisited edges
+  for (const startKey of adj.keys()) {
+    if (usedEdges.has(startKey)) continue;
+
+    // Walk in one direction
+    const chain: EdgeKey[] = [startKey];
+    usedEdges.add(startKey);
+
+    let current = startKey;
+    while (true) {
+      const neighbors = adj.get(current) ?? [];
+      const next = neighbors.find(n => !usedEdges.has(n));
+      if (!next) break;
+      usedEdges.add(next);
+      chain.push(next);
+      current = next;
+    }
+
+    if (chain.length < 2) continue;
+
+    // Convert chain of edge keys → 3D sphere points
+    const pts: THREE.Vector3[] = [];
+    for (const key of chain) {
+      const cp = getEdge(key);
+      if (!cp) continue;
+      const [lat, lon] = pixToLatLon(cp[0], cp[1]);
+      pts.push(latLonToSphere(lat, lon));
+    }
+    if (pts.length >= 2) segments.push(pts);
+  }
+
+  return segments;
+}
+
+// ── Project 3D point to screen space ─────────────────────────────────────────
+const _v3 = new THREE.Vector3();
+function projectToScreen(
+  point: THREE.Vector3,
+  camera: THREE.PerspectiveCamera,
+  w: number, h: number,
+  dpr: number
+): { x: number; y: number; visible: boolean } {
+  _v3.copy(point);
+  // Back-face cull: if point normal faces away from camera, it's on back of globe
+  const camDir = camera.position.clone().normalize();
+  const visible = _v3.dot(camDir) > 0;
+
+  _v3.project(camera);
+  return {
+    x: (_v3.x * 0.5 + 0.5) * w * dpr,
+    y: (-_v3.y * 0.5 + 0.5) * h * dpr,
+    visible,
+  };
+}
+
+// ── Per-frame contour cache ───────────────────────────────────────────────────
+interface ContourCache {
+  frameIdx: number;
+  segments: Map<string, THREE.Vector3[][]>; // threshId → segments
 }
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GlobeApp() {
-  const mountRef    = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef    = useRef<THREE.Scene | null>(null);
-  const cameraRef   = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const textureRef  = useRef<THREE.CanvasTexture | null>(null);
-  const canvasRef   = useRef<HTMLCanvasElement | null>(null);
-  const imgDataRef  = useRef<ImageData | null>(null);
-  const rafRef      = useRef<number>(0);
-  const frameIdxRef = useRef(0);
-  const playingRef  = useRef(false);
+  const mountRef      = useRef<HTMLDivElement>(null);
+  const uiRef         = useRef<HTMLDivElement>(null);
+  const overlayRef    = useRef<HTMLCanvasElement>(null); // 2D screen-space contour canvas
+  const rendererRef   = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef     = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef   = useRef<OrbitControls | null>(null);
+  const textureRef    = useRef<THREE.CanvasTexture | null>(null);
+  const texCanvasRef  = useRef<HTMLCanvasElement | null>(null);
+  const imgDataRef    = useRef<ImageData | null>(null);
+  const rafRef        = useRef<number>(0);
+  const frameIdxRef   = useRef(0);
+  const contourCache  = useRef<ContourCache>({ frameIdx: -1, segments: new Map() });
+  const activeIdsRef  = useRef<Set<string>>(new Set(['frost']));
 
   const [globeData, setGlobeData]   = useState<GlobeData | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -95,11 +302,17 @@ export default function GlobeApp() {
   const [frameIdx, setFrameIdx]     = useState(0);
   const [playing, setPlaying]       = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
+  const [activeIds, setActiveIds]   = useState<Set<string>>(
+    () => new Set(THRESHOLDS.filter(t => t.defaultOn).map(t => t.id))
+  );
 
-  // ── Load binary data ───────────────────────────────────────────────────────
+  // Keep ref in sync for use inside rAF loop
+  useEffect(() => { activeIdsRef.current = activeIds; }, [activeIds]);
+  useEffect(() => { frameIdxRef.current = frameIdx; }, [frameIdx]);
+
+  // ── Load binary ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const url = '/data/soil_globe_texture_2024.bin';
-    fetch(url)
+    fetch('/data/soil_globe_texture_2024.bin')
       .then(async r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const total = Number(r.headers.get('content-length') ?? 0);
@@ -109,21 +322,17 @@ export default function GlobeApp() {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          chunks.push(value);
-          received += value.length;
+          chunks.push(value); received += value.length;
           if (total > 0) setProgress(Math.round(received / total * 100));
         }
-        // Concatenate
         const full = new Uint8Array(received);
-        let pos = 0;
-        for (const c of chunks) { full.set(c, pos); pos += c.length; }
+        let pos = 0; for (const c of chunks) { full.set(c, pos); pos += c.length; }
         return full.buffer;
       })
       .then(buf => {
         const view = new DataView(buf);
         const headerLen = view.getUint32(0, true);
-        const headerJson = new TextDecoder().decode(new Uint8Array(buf, 4, headerLen));
-        const header: GlobeHeader = JSON.parse(headerJson);
+        const header: GlobeHeader = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headerLen)));
         const pixels = new Uint8Array(buf, 4 + headerLen);
         setGlobeData({ header, pixels });
         setLoading(false);
@@ -131,79 +340,118 @@ export default function GlobeApp() {
       .catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
-  // ── Init Three.js ──────────────────────────────────────────────────────────
+  // ── Init Three.js + overlay canvas rAF loop ────────────────────────────────
   useEffect(() => {
     if (!mountRef.current) return;
-    const W = mountRef.current.clientWidth;
-    const H = mountRef.current.clientHeight;
+    const W = mountRef.current.clientWidth, H = mountRef.current.clientHeight;
+    const dpr = Math.min(window.devicePixelRatio, 2);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(W, H);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(dpr);
     renderer.setClearColor(0x000408, 1);
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
-    sceneRef.current = scene;
-
     const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 1000);
     camera.position.set(0, 0, 2.8);
     cameraRef.current = camera;
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enablePan = false;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 1.4;
-    controls.maxDistance = 5;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.35;
+    controls.enablePan = false; controls.enableDamping = true;
+    controls.dampingFactor = 0.05; controls.minDistance = 1.4; controls.maxDistance = 5;
+    controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
     controlsRef.current = controls;
 
-    // Dark ocean sphere underneath
-    scene.add(new THREE.Mesh(
-      new THREE.SphereGeometry(0.999, 64, 64),
-      new THREE.MeshBasicMaterial({ color: 0x020c1a })
-    ));
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.999, 64, 64), new THREE.MeshBasicMaterial({ color: 0x020c1a })));
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.06, 32, 32),  new THREE.MeshBasicMaterial({ color: 0x0a2a5a, transparent: true, opacity: 0.18, side: THREE.BackSide })));
 
-    // Atmosphere glow
-    scene.add(new THREE.Mesh(
-      new THREE.SphereGeometry(1.06, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0x0a2a5a, transparent: true, opacity: 0.18, side: THREE.BackSide })
-    ));
-
-    // Data texture sphere — texture applied after data loads
     const texCanvas = document.createElement('canvas');
-    texCanvas.width  = 720;
-    texCanvas.height = 360;
-    canvasRef.current = texCanvas;
-
+    texCanvas.width = 720; texCanvas.height = 360;
+    texCanvasRef.current = texCanvas;
     const texture = new THREE.CanvasTexture(texCanvas);
-    texture.needsUpdate = true;
     textureRef.current = texture;
 
     const dataSphere = new THREE.Mesh(
       new THREE.SphereGeometry(1.001, 128, 64),
       new THREE.MeshBasicMaterial({ map: texture, transparent: true })
     );
-    // Flip: Three.js sphere UV wraps differently from equirectangular convention
     dataSphere.rotation.y = Math.PI;
     scene.add(dataSphere);
 
     const handleResize = () => {
-      if (!mountRef.current) return;
+      if (!mountRef.current || !overlayRef.current) return;
       const w = mountRef.current.clientWidth, h = mountRef.current.clientHeight;
       renderer.setSize(w, h);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      overlayRef.current.width  = w * dpr;
+      overlayRef.current.height = h * dpr;
+      overlayRef.current.style.width  = w + 'px';
+      overlayRef.current.style.height = h + 'px';
     };
     window.addEventListener('resize', handleResize);
 
+    // ── rAF loop: render Three.js + draw contours on overlay canvas ──────────
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
+
+      // Draw screen-space contours
+      const overlay = overlayRef.current;
+      const globeDataSnap = (window as any).__globeData as GlobeData | null;
+      if (!overlay || !globeDataSnap) return;
+
+      const ow = overlay.width, oh = overlay.height;
+      const ctx2 = overlay.getContext('2d')!;
+      ctx2.clearRect(0, 0, ow, oh);
+
+      const activeNow = activeIdsRef.current;
+      if (activeNow.size === 0) return;
+
+      const fi = frameIdxRef.current;
+      const { header: { width: tw, height: th }, pixels } = globeDataSnap;
+
+      // Rebuild contour cache if frame changed
+      if (contourCache.current.frameIdx !== fi) {
+        contourCache.current.frameIdx = fi;
+        contourCache.current.segments.clear();
+      }
+
+      const camW = mountRef.current?.clientWidth ?? ow / dpr;
+      const camH = mountRef.current?.clientHeight ?? oh / dpr;
+
+      for (const thresh of THRESHOLDS) {
+        if (!activeNow.has(thresh.id)) continue;
+
+        // Build segments if not cached for this frame
+        if (!contourCache.current.segments.has(thresh.id)) {
+          const segs = extractContourSegments(pixels, fi, tw, th, tempToU8(thresh.temp_c));
+          contourCache.current.segments.set(thresh.id, segs);
+        }
+        const segments = contourCache.current.segments.get(thresh.id)!;
+
+        ctx2.strokeStyle = thresh.color;
+        ctx2.lineWidth   = thresh.lineWidth * dpr;
+        ctx2.lineCap     = 'round';
+        ctx2.lineJoin    = 'round';
+        ctx2.shadowColor = thresh.color;
+        ctx2.shadowBlur  = 4 * dpr;
+
+        for (const seg of segments) {
+          ctx2.beginPath();
+          let drawing = false;
+          for (const pt of seg) {
+            const { x, y, visible } = projectToScreen(pt, camera, camW, camH, dpr);
+            if (!visible) { drawing = false; continue; }
+            if (!drawing) { ctx2.moveTo(x, y); drawing = true; }
+            else { ctx2.lineTo(x, y); }
+          }
+          ctx2.stroke();
+        }
+        ctx2.shadowBlur = 0;
+      }
     };
     animate();
     setSceneReady(true);
@@ -211,64 +459,70 @@ export default function GlobeApp() {
     return () => {
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener('resize', handleResize);
-      controls.dispose();
-      texture.dispose();
-      renderer.dispose();
-      if (mountRef.current && renderer.domElement.parentNode === mountRef.current) {
-        mountRef.current.removeChild(renderer.domElement);
-      }
-      sceneRef.current = null;
-      rendererRef.current = null;
+      controls.dispose(); texture.dispose(); renderer.dispose();
+      if (mountRef.current && renderer.domElement.parentNode === mountRef.current) mountRef.current.removeChild(renderer.domElement);
+      cameraRef.current = null; rendererRef.current = null;
       setSceneReady(false);
     };
   }, []);
 
+  // ── Expose globeData to rAF loop via window ref ────────────────────────────
+  useEffect(() => { (window as any).__globeData = globeData; }, [globeData]);
+
   // ── Update texture when frame changes ─────────────────────────────────────
   useEffect(() => {
     if (!globeData || !sceneReady) return;
-    const { header, pixels } = globeData;
-    const { width: w, height: h } = header;
-
-    const texCanvas = canvasRef.current!;
+    const { header: { width: w, height: h }, pixels } = globeData;
+    const texCanvas = texCanvasRef.current!;
     const ctx = texCanvas.getContext('2d')!;
-
-    // Lazily create ImageData
-    if (!imgDataRef.current) {
-      imgDataRef.current = ctx.createImageData(w, h);
-    }
-
+    if (!imgDataRef.current) imgDataRef.current = ctx.createImageData(w, h);
     drawFrame(pixels, frameIdx, w, h, imgDataRef.current);
     ctx.putImageData(imgDataRef.current, 0, 0);
-
-    if (textureRef.current) {
-      textureRef.current.needsUpdate = true;
-    }
+    if (textureRef.current) textureRef.current.needsUpdate = true;
+    // Bust contour cache so segments rebuild on next rAF
+    contourCache.current.frameIdx = -1;
   }, [globeData, frameIdx, sceneReady]);
 
   // ── Playback ───────────────────────────────────────────────────────────────
-  useEffect(() => { playingRef.current = playing; }, [playing]);
-  useEffect(() => { frameIdxRef.current = frameIdx; }, [frameIdx]);
-
   useEffect(() => {
     if (!playing || !globeData) return;
     const iv = setInterval(() => {
       const next = (frameIdxRef.current + 1) % globeData.header.weeks;
-      frameIdxRef.current = next;
-      setFrameIdx(next);
+      frameIdxRef.current = next; setFrameIdx(next);
     }, 200);
     return () => clearInterval(iv);
   }, [playing, globeData]);
 
   // Stop auto-rotate on drag
   useEffect(() => {
-    const el = mountRef.current;
-    if (!el) return;
+    const canvas = rendererRef.current?.domElement;
+    if (!canvas) return;
     const stop = () => { if (controlsRef.current) controlsRef.current.autoRotate = false; };
-    el.addEventListener('pointerdown', stop);
-    return () => el.removeEventListener('pointerdown', stop);
+    canvas.addEventListener('pointerdown', stop);
+    return () => canvas.removeEventListener('pointerdown', stop);
+  }, [sceneReady]);
+
+  // Block OrbitControls from UI overlay
+  useEffect(() => {
+    const ui = uiRef.current; if (!ui) return;
+    const block = (e: PointerEvent) => e.stopPropagation();
+    ui.addEventListener('pointerdown', block, true);
+    ui.addEventListener('pointermove', block, true);
+    return () => {
+      ui.removeEventListener('pointerdown', block, true);
+      ui.removeEventListener('pointermove', block, true);
+    };
   }, []);
 
-  // ── Date label ─────────────────────────────────────────────────────────────
+  const toggleThreshold = (id: string) => {
+    setActiveIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      contourCache.current.segments.delete(id); // force rebuild
+      return next;
+    });
+  };
+
   const dateLabel = (() => {
     if (!globeData?.header.dates[frameIdx]) return '';
     const d = new Date(globeData.header.dates[frameIdx] + 'T00:00:00Z');
@@ -276,20 +530,33 @@ export default function GlobeApp() {
   })();
 
   const weeks = globeData?.header.weeks ?? 53;
+  function threshPct(temp_c: number): number {
+    return Math.max(0, Math.min(100, (temp_c - TEMP_MIN) / TEMP_RANGE * 100));
+  }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio, 2) : 1;
+  const initW = typeof window !== 'undefined' ? window.innerWidth : 800;
+  const initH = typeof window !== 'undefined' ? window.innerHeight : 600;
+
   return (
     <div className="globe-shell">
       <div ref={mountRef} className="globe-canvas" />
+
+      {/* Screen-space contour overlay — sits directly on top of WebGL canvas */}
+      <canvas
+        ref={overlayRef}
+        className="globe-overlay-canvas"
+        width={initW * dpr}
+        height={initH * dpr}
+        style={{ width: initW, height: initH }}
+      />
 
       {loading && (
         <div className="globe-overlay">
           <div className="globe-loading">
             <div className="globe-spinner" />
             <div>Loading soil temperature data…</div>
-            <div className="globe-progress-bar">
-              <div className="globe-progress-fill" style={{ width: `${loadProgress}%` }} />
-            </div>
+            <div className="globe-progress-bar"><div className="globe-progress-fill" style={{ width: `${loadProgress}%` }} /></div>
             <div className="globe-loading-sub">{loadProgress}% · 720×360 · 53 weeks · 2024</div>
           </div>
         </div>
@@ -305,27 +572,55 @@ export default function GlobeApp() {
       )}
 
       {!loading && !error && globeData && (
-        <>
+        <div ref={uiRef} className="globe-ui">
           <div className="globe-hud-title">
             <div className="globe-eyebrow">Global soil temperature · ERA5</div>
             <div className="globe-title">Frost Globe</div>
           </div>
+
           <div className="globe-hud-date">
             <div className="globe-date-label">{dateLabel}</div>
             <div className="globe-week-label">Week {frameIdx + 1} of {weeks}</div>
           </div>
+
           <div className="globe-controls">
             <button className="globe-play-btn" onClick={() => setPlaying(p => !p)}>{playing ? '⏸' : '▶'}</button>
             <input type="range" min={0} max={weeks - 1} value={frameIdx}
               onChange={e => { setPlaying(false); setFrameIdx(Number(e.target.value)); }}
               className="globe-scrubber" />
           </div>
-          <div className="globe-legend">
-            <div className="globe-legend-bar" />
-            <div className="globe-legend-labels"><span>−55°C</span><span>0°C</span><span>+50°C</span></div>
+
+          <div className="globe-legend-panel">
+            <div className="globe-legend-title">Soil temperature</div>
+            <div className="globe-legend-wrap">
+              <div className="globe-legend-bar" />
+              {THRESHOLDS.map(t => (
+                <div key={t.id}
+                  className={`globe-thresh-tick ${activeIds.has(t.id) ? 'active' : ''}`}
+                  style={{ left: `${threshPct(t.temp_c)}%`, borderColor: t.color }}
+                />
+              ))}
+            </div>
+            <div className="globe-legend-labels">
+              <span>−55°C</span><span>0°C</span><span>+50°C</span>
+            </div>
+            <div className="globe-thresh-chips">
+              {THRESHOLDS.map(t => (
+                <button key={t.id}
+                  className={`globe-thresh-chip ${activeIds.has(t.id) ? 'on' : ''}`}
+                  style={{ '--chip-color': t.color } as React.CSSProperties}
+                  onClick={() => toggleThreshold(t.id)}
+                  title={t.description}
+                >
+                  <span className="chip-dot" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
+
           <div className="globe-tip">Drag to rotate · scroll to zoom</div>
-        </>
+        </div>
       )}
     </div>
   );
