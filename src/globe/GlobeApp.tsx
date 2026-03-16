@@ -10,6 +10,9 @@ interface GlobeHeader {
 }
 interface GlobeData { header: GlobeHeader; pixels: Uint8Array; }
 
+const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+const DEFAULT_YEAR    = 2024;
+
 // ── Threshold definitions ─────────────────────────────────────────────────────
 interface Threshold {
   id: string; label: string; temp_c: number;
@@ -92,7 +95,7 @@ function extractContourSegments(
 ): THREE.Vector3[][] {
   const offset = frameIdx * w * h;
   const OCEAN  = 255;
-  const STEP   = 2; // sample every 2 pixels — smooth but not too slow
+  const STEP   = 1; // sample every pixel for maximum resolution
 
   // Helper: get value at pixel, treating ocean as NaN-equivalent (use -999)
   function val(px: number, py: number): number {
@@ -244,7 +247,14 @@ function extractContourSegments(
       const [lat, lon] = pixToLatLon(cp[0], cp[1]);
       pts.push(latLonToSphere(lat, lon));
     }
-    if (pts.length >= 2) segments.push(pts);
+    if (pts.length >= 2) {
+      // Close the loop if endpoints are within ~2° of each other
+      const first = pts[0], last = pts[pts.length - 1];
+      if (first.distanceTo(last) < 0.035) {
+        pts.push(pts[0].clone());
+      }
+      segments.push(pts);
+    }
   }
 
   return segments;
@@ -269,6 +279,27 @@ function projectToScreen(
     y: (-_v3.y * 0.5 + 0.5) * h * dpr,
     visible,
   };
+}
+
+// ── Chaikin smoothing on sphere points ───────────────────────────────────────
+// Repeatedly cuts corners: each edge AB → two new points at 25% and 75%.
+// Applied in 3D then re-normalized to unit sphere so points stay on surface.
+function chaikinSphere(pts: THREE.Vector3[], iterations = 2): THREE.Vector3[] {
+  let cur = pts;
+  for (let iter = 0; iter < iterations; iter++) {
+    if (cur.length < 3) break;
+    const next: THREE.Vector3[] = [];
+    next.push(cur[0].clone());
+    for (let i = 0; i < cur.length - 1; i++) {
+      const a = cur[i], b = cur[i + 1];
+      const q = new THREE.Vector3().lerpVectors(a, b, 0.25).normalize();
+      const r = new THREE.Vector3().lerpVectors(a, b, 0.75).normalize();
+      next.push(q, r);
+    }
+    next.push(cur[cur.length - 1].clone());
+    cur = next;
+  }
+  return cur;
 }
 
 // ── Per-frame contour cache ───────────────────────────────────────────────────
@@ -302,6 +333,8 @@ export default function GlobeApp() {
   const [frameIdx, setFrameIdx]     = useState(0);
   const [playing, setPlaying]       = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(DEFAULT_YEAR);
+  const [yearStatus, setYearStatus] = useState<Record<number, 'loading'|'ready'|'error'>>({});
   const [activeIds, setActiveIds]   = useState<Set<string>>(
     () => new Set(THRESHOLDS.filter(t => t.defaultOn).map(t => t.id))
   );
@@ -310,11 +343,26 @@ export default function GlobeApp() {
   useEffect(() => { activeIdsRef.current = activeIds; }, [activeIds]);
   useEffect(() => { frameIdxRef.current = frameIdx; }, [frameIdx]);
 
-  // ── Load binary ────────────────────────────────────────────────────────────
+  // Year data cache — avoid re-fetching already loaded years
+  const yearCache = useRef<Map<number, GlobeData>>(new Map());
+
+  // ── Load binary for selected year ─────────────────────────────────────────
   useEffect(() => {
-    fetch('/data/soil_globe_texture_2024.bin')
+    if (yearCache.current.has(selectedYear)) {
+      setGlobeData(yearCache.current.get(selectedYear)!);
+      setFrameIdx(0);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setProgress(0);
+    setYearStatus(s => ({ ...s, [selectedYear]: 'loading' }));
+
+    fetch(`/data/soil_globe_texture_${selectedYear}.bin`)
       .then(async r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        if (!r.ok) throw new Error(`${selectedYear} data not yet available`);
         const total = Number(r.headers.get('content-length') ?? 0);
         const reader = r.body!.getReader();
         const chunks: Uint8Array[] = [];
@@ -334,11 +382,19 @@ export default function GlobeApp() {
         const headerLen = view.getUint32(0, true);
         const header: GlobeHeader = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headerLen)));
         const pixels = new Uint8Array(buf, 4 + headerLen);
-        setGlobeData({ header, pixels });
+        const data = { header, pixels };
+        yearCache.current.set(selectedYear, data);
+        setGlobeData(data);
+        setFrameIdx(0);
         setLoading(false);
+        setYearStatus(s => ({ ...s, [selectedYear]: 'ready' }));
       })
-      .catch(e => { setError(e.message); setLoading(false); });
-  }, []);
+      .catch(e => {
+        setError(e.message);
+        setLoading(false);
+        setYearStatus(s => ({ ...s, [selectedYear]: 'error' }));
+      });
+  }, [selectedYear]);
 
   // ── Init Three.js + overlay canvas rAF loop ────────────────────────────────
   useEffect(() => {
@@ -427,7 +483,16 @@ export default function GlobeApp() {
 
         // Build segments if not cached for this frame
         if (!contourCache.current.segments.has(thresh.id)) {
-          const segs = extractContourSegments(pixels, fi, tw, th, tempToU8(thresh.temp_c));
+          const raw  = extractContourSegments(pixels, fi, tw, th, tempToU8(thresh.temp_c));
+          const segs = raw.map(s => {
+            const smoothed = chaikinSphere(s, 3);
+            // Re-close after smoothing if endpoints drifted apart but were already near
+            const f = smoothed[0], l = smoothed[smoothed.length - 1];
+            if (f.distanceTo(l) < 0.05 && smoothed[smoothed.length - 1] !== smoothed[0]) {
+              smoothed.push(smoothed[0].clone());
+            }
+            return smoothed;
+          });
           contourCache.current.segments.set(thresh.id, segs);
         }
         const segments = contourCache.current.segments.get(thresh.id)!;
@@ -584,10 +649,21 @@ export default function GlobeApp() {
           </div>
 
           <div className="globe-controls">
-            <button className="globe-play-btn" onClick={() => setPlaying(p => !p)}>{playing ? '⏸' : '▶'}</button>
-            <input type="range" min={0} max={weeks - 1} value={frameIdx}
-              onChange={e => { setPlaying(false); setFrameIdx(Number(e.target.value)); }}
-              className="globe-scrubber" />
+            <div className="globe-year-selector">
+              {AVAILABLE_YEARS.map(y => (
+                <button key={y}
+                  className={`globe-year-btn ${y === selectedYear ? 'active' : ''} ${yearStatus[y] === 'error' ? 'unavailable' : ''}`}
+                  onClick={() => { setPlaying(false); setSelectedYear(y); }}
+                  disabled={yearStatus[y] === 'loading'}
+                >{y}</button>
+              ))}
+            </div>
+            <div className="globe-playback-row">
+              <button className="globe-play-btn" onClick={() => setPlaying(p => !p)}>{playing ? '⏸' : '▶'}</button>
+              <input type="range" min={0} max={weeks - 1} value={frameIdx}
+                onChange={e => { setPlaying(false); setFrameIdx(Number(e.target.value)); }}
+                className="globe-scrubber" />
+            </div>
           </div>
 
           <div className="globe-legend-panel">
