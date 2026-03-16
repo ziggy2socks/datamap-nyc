@@ -22,6 +22,7 @@ import json
 import struct
 import time
 import numpy as np
+import pandas as pd
 import xarray as xr
 from pathlib import Path
 from datetime import date, timedelta
@@ -68,7 +69,12 @@ def process_year(year: int, raw_dir: Path, out_dir: Path):
     lat_vals = da["latitude"].values   # descending: 90 → -90
     lon_vals = da["longitude"].values  # -180 → 179.9
 
-    dates = weekly_mondays(year)
+    # Cap to months actually present in the data
+    last_time = pd.Timestamp(time_vals[-1]).to_pydatetime().date()
+    all_dates = weekly_mondays(year)
+    dates = [d for d in all_dates if d <= last_time]
+    if not dates:
+        dates = all_dates[:1]
     weeks = len(dates)
     print(f"  {weeks} weekly frames → {WIDTH}×{HEIGHT} texture ({WIDTH*HEIGHT:,} pixels)")
 

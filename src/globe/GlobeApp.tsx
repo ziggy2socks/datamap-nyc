@@ -20,12 +20,12 @@ interface Threshold {
 }
 
 const THRESHOLDS: Threshold[] = [
-  { id: 'frost',    label: 'Frost line',       temp_c: 0,  color: '#ff3cff', lineWidth: 1.8, defaultOn: true,  description: '0°C — soil freezing threshold' },
-  { id: 'crocus',   label: 'Crocus emergence', temp_c: 5,  color: '#00cfff', lineWidth: 1.5, defaultOn: false, description: '5°C / 41°F — earliest spring signal' },
-  { id: 'bulb',     label: 'Bulb awakening',   temp_c: 10, color: '#00e87a', lineWidth: 1.5, defaultOn: false, description: '10°C / 50°F — tulips & daffodils break dormancy' },
-  { id: 'planting', label: 'Planting window',  temp_c: 13, color: '#ffe600', lineWidth: 1.5, defaultOn: false, description: '13°C / 55°F — fall bulb planting; tomato transplant zone' },
-  { id: 'corn',     label: 'Corn belt',        temp_c: 18, color: '#ff8c00', lineWidth: 1.5, defaultOn: false, description: '18°C / 64°F — optimal corn germination' },
-  { id: 'heat',     label: 'Heat stress',      temp_c: 35, color: '#ff1a1a', lineWidth: 1.5, defaultOn: false, description: '35°C / 95°F — crops under heat stress' },
+  { id: 'frost',    label: 'Frost line',       temp_c: 0,  color: '#0a0aee', lineWidth: 2.0, defaultOn: true,  description: '0°C — soil freezing threshold' },
+  { id: 'crocus',   label: 'Crocus emergence', temp_c: 5,  color: '#0088cc', lineWidth: 1.5, defaultOn: false, description: '5°C / 41°F — earliest spring signal' },
+  { id: 'bulb',     label: 'Bulb awakening',   temp_c: 10, color: '#007744', lineWidth: 1.5, defaultOn: false, description: '10°C / 50°F — tulips & daffodils break dormancy' },
+  { id: 'planting', label: 'Planting window',  temp_c: 13, color: '#cc8800', lineWidth: 1.5, defaultOn: false, description: '13°C / 55°F — fall bulb planting; tomato transplant zone' },
+  { id: 'corn',     label: 'Corn belt',        temp_c: 18, color: '#cc4400', lineWidth: 1.5, defaultOn: false, description: '18°C / 64°F — optimal corn germination' },
+  { id: 'heat',     label: 'Heat stress',      temp_c: 35, color: '#cc0000', lineWidth: 1.5, defaultOn: false, description: '35°C / 95°F — crops under heat stress' },
 ];
 
 // ── Color ramp ────────────────────────────────────────────────────────────────
@@ -269,9 +269,9 @@ function projectToScreen(
   dpr: number
 ): { x: number; y: number; visible: boolean } {
   _v3.copy(point);
-  // Back-face cull: if point normal faces away from camera, it's on back of globe
+  // Back-face cull: clip slightly before the horizon to avoid edge bleed
   const camDir = camera.position.clone().normalize();
-  const visible = _v3.dot(camDir) > 0;
+  const visible = _v3.dot(camDir) > 0.12;
 
   _v3.project(camera);
   return {
@@ -405,23 +405,26 @@ export default function GlobeApp() {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(W, H);
     renderer.setPixelRatio(dpr);
-    renderer.setClearColor(0x000408, 1);
+    renderer.setClearColor(0xedecea, 1);
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 1000);
-    camera.position.set(0, 0, 2.8);
+    camera.position.set(0, 0, 3.6);
     cameraRef.current = camera;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false; controls.enableDamping = true;
-    controls.dampingFactor = 0.05; controls.minDistance = 1.4; controls.maxDistance = 5;
-    controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
+    controls.dampingFactor = 0.05; controls.minDistance = 1.8; controls.maxDistance = 6;
+    controls.autoRotate = true; controls.autoRotateSpeed = 0.8;
     controlsRef.current = controls;
 
-    scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.999, 64, 64), new THREE.MeshBasicMaterial({ color: 0x020c1a })));
-    scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.06, 32, 32),  new THREE.MeshBasicMaterial({ color: 0x0a2a5a, transparent: true, opacity: 0.18, side: THREE.BackSide })));
+    // Ocean sphere — pure white, matches paper background so coastline bleed is invisible
+    scene.add(new THREE.Mesh(
+      new THREE.SphereGeometry(1.0, 64, 64),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    ));
 
     const texCanvas = document.createElement('canvas');
     texCanvas.width = 720; texCanvas.height = 360;
@@ -429,12 +432,82 @@ export default function GlobeApp() {
     const texture = new THREE.CanvasTexture(texCanvas);
     textureRef.current = texture;
 
+    // Land texture sphere — unlit, full brightness
     const dataSphere = new THREE.Mesh(
       new THREE.SphereGeometry(1.001, 128, 64),
       new THREE.MeshBasicMaterial({ map: texture, transparent: true })
     );
     dataSphere.rotation.y = Math.PI;
     scene.add(dataSphere);
+
+
+
+    // Lat/lon grid lines — very thin, semi-transparent white
+    {
+      const gridGeo = new THREE.BufferGeometry();
+      const pts: number[] = [];
+      const SEGMENTS = 180; // points per line
+      const R = 1.004; // just above all sphere layers
+      const toXYZ = (lat: number, lon: number) => {
+        const phi   = (90 - lat) * Math.PI / 180;
+        const theta = (lon + 180) * Math.PI / 180;
+        return [
+          R * -Math.sin(phi) * Math.cos(theta),
+          R *  Math.cos(phi),
+          R *  Math.sin(phi) * Math.sin(theta),
+        ];
+      };
+      // Latitude lines every 10°
+      for (let lat = -80; lat <= 80; lat += 10) {
+        for (let i = 0; i < SEGMENTS; i++) {
+          const lon0 = (i / SEGMENTS) * 360 - 180;
+          const lon1 = ((i + 1) / SEGMENTS) * 360 - 180;
+          pts.push(...toXYZ(lat, lon0), ...toXYZ(lat, lon1));
+        }
+      }
+      // Longitude lines every 10°
+      for (let lon = -180; lon < 180; lon += 10) {
+        for (let i = 0; i < SEGMENTS; i++) {
+          const lat0 = (i / SEGMENTS) * 180 - 90;
+          const lat1 = ((i + 1) / SEGMENTS) * 180 - 90;
+          pts.push(...toXYZ(lat0, lon), ...toXYZ(lat1, lon));
+        }
+      }
+      gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+      const gridMat = new THREE.LineBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.35, depthWrite: false });
+      const grid = new THREE.LineSegments(gridGeo, gridMat);
+      scene.add(grid);
+    }
+
+    // Limb darkening sphere — shader darkens toward edges based on surface normal vs camera
+    // This is the correct way to fake spherical depth without a light source
+    const limbMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {},
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+          float fresnel = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+          float dark = pow(fresnel, 2.5) * 0.45;
+          gl_FragColor = vec4(0.0, 0.0, 0.0, dark);
+        }
+      `,
+    });
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.002, 128, 64), limbMat));
+
+
 
     const handleResize = () => {
       if (!mountRef.current || !overlayRef.current) return;
@@ -501,8 +574,7 @@ export default function GlobeApp() {
         ctx2.lineWidth   = thresh.lineWidth * dpr;
         ctx2.lineCap     = 'round';
         ctx2.lineJoin    = 'round';
-        ctx2.shadowColor = thresh.color;
-        ctx2.shadowBlur  = 4 * dpr;
+        ctx2.shadowBlur  = 0;
 
         for (const seg of segments) {
           ctx2.beginPath();
@@ -515,7 +587,6 @@ export default function GlobeApp() {
           }
           ctx2.stroke();
         }
-        ctx2.shadowBlur = 0;
       }
     };
     animate();
@@ -541,6 +612,7 @@ export default function GlobeApp() {
     const texCanvas = texCanvasRef.current!;
     const ctx = texCanvas.getContext('2d')!;
     if (!imgDataRef.current) imgDataRef.current = ctx.createImageData(w, h);
+    ctx.clearRect(0, 0, w, h);
     drawFrame(pixels, frameIdx, w, h, imgDataRef.current);
     ctx.putImageData(imgDataRef.current, 0, 0);
     if (textureRef.current) textureRef.current.needsUpdate = true;
@@ -616,6 +688,8 @@ export default function GlobeApp() {
         style={{ width: initW, height: initH }}
       />
 
+
+
       {loading && (
         <div className="globe-overlay">
           <div className="globe-loading">
@@ -639,8 +713,8 @@ export default function GlobeApp() {
       {!loading && !error && globeData && (
         <div ref={uiRef} className="globe-ui">
           <div className="globe-hud-title">
-            <div className="globe-eyebrow">Global soil temperature · ERA5</div>
-            <div className="globe-title">Frost Globe</div>
+            <div className="globe-eyebrow">ERA5 · 2020–2026</div>
+            <div className="globe-title">Global Soil Temperature</div>
           </div>
 
           <div className="globe-hud-date">
