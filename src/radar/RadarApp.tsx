@@ -39,7 +39,7 @@ function maxDataMonth(year: number): number {
 type ViewMode = 'radar' | 'day' | 'trends' | 'map';
 
 export default function App() {
-  const [viewMode,        setViewMode]        = useState<ViewMode>('radar');
+  const [viewMode,        setViewMode]        = useState<ViewMode>('map');
   const [chartResolution, setChartResolution] = useState<'day' | 'month'>('day');
   const [chartMode,       setChartMode]       = useState<ChartMode>('stack');
   const [tooltip, setTooltip] = useState<{ type: string; count: number; totalInBar: number; barIdx: number; x: number; y: number } | null>(null);
@@ -125,6 +125,8 @@ export default function App() {
       }
     }
     load();
+    // Pre-load type list for map sidebar (map is default view)
+    loadTrends(new Date().getFullYear(), false);
   }, []);
 
   // Switch date
