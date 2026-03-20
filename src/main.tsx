@@ -16,7 +16,7 @@ async function render() {
   } else if (path.startsWith('/permits')) {
     const mod = await import('./permits/PermitsApp');
     Component = mod.default;
-  } else if (path.startsWith('/globe')) {
+  } else if (path.startsWith('/globe') || path.startsWith('/soil')) {
     const mod = await import('./globe/GlobeApp');
     Component = mod.default;
   } else {
@@ -25,7 +25,7 @@ async function render() {
   }
 
   // StrictMode intentionally disabled for Three.js routes — double-invoke tears down WebGL context
-  const useStrict = !path.startsWith('/globe');
+  const useStrict = !path.startsWith('/globe') && !path.startsWith('/soil');
   const el = <Component />;
   createRoot(document.getElementById('root')!).render(
     useStrict ? <StrictMode>{el}</StrictMode> : el

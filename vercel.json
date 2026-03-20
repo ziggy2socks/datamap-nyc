@@ -13,6 +13,7 @@
     { "source": "/permits",            "destination": "/index.html" },
     { "source": "/permits/map",        "destination": "/index.html" },
     { "source": "/globe",              "destination": "/index.html" },
+    { "source": "/soil",               "destination": "/index.html" },
     { "source": "/(.*)",               "destination": "/index.html" }
   ],
   "headers": [

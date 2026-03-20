@@ -1013,7 +1013,7 @@ export default function GlobeApp() {
         <div ref={uiRef} className="globe-ui">
           <div className="globe-hud-title">
             <div className="globe-eyebrow">ERA5 · 2020–2026</div>
-            <div className="globe-title">Global Soil Temperature</div>
+            <div className="globe-title">Soil Temperature</div>
           </div>
 
           <div className="globe-hud-date">
