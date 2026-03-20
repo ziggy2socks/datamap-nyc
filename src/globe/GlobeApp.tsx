@@ -566,6 +566,9 @@ export default function GlobeApp() {
   const [yearStatus, setYearStatus] = useState<Record<string, 'loading'|'ready'|'error'>>({});
   const [liveDate, setLiveDate]     = useState<string | null>(null);
   const [liveProgress, setLiveProgress] = useState(0);
+  const [tooltip, setTooltip]       = useState<{ x: number; y: number; lat: number; lon: number; temp: number | null } | null>(null);
+  const raycasterRef                = useRef(new THREE.Raycaster());
+  const mousePosRef                 = useRef(new THREE.Vector2());
   const [activeIds, setActiveIds]   = useState<Set<string>>(
     () => new Set(THRESHOLDS.filter(t => t.defaultOn).map(t => t.id))
   );
@@ -929,6 +932,60 @@ export default function GlobeApp() {
     return () => clearInterval(iv);
   }, [playing, globeData]);
 
+  // Mouse move → raycast → tooltip
+  useEffect(() => {
+    if (!sceneReady) return;
+    const canvas = rendererRef.current?.domElement;
+    if (!canvas) return;
+
+    const onMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+      const y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+      mousePosRef.current.set(x, y);
+
+      const camera = cameraRef.current;
+      const globeData = (window as any).__globeData as GlobeData | null;
+      if (!camera || !globeData) return;
+
+      raycasterRef.current.setFromCamera(mousePosRef.current, camera);
+      // Intersect unit sphere (radius 1.001)
+      const sphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.001);
+      const ray = raycasterRef.current.ray;
+      const target = new THREE.Vector3();
+      const hit = ray.intersectSphere(sphere, target);
+
+      if (!hit) { setTooltip(null); return; }
+
+      // Convert hit point back to lat/lon
+      // Sphere coords with rotation.y = Math.PI applied (reversed)
+      // latLonToSphere applies: x = -sin(phi)*cos(theta) rotated by PI → x,z negated
+      // So to reverse: un-rotate by -PI first (negate x and z)
+      const ux = -target.x, uy = target.y, uz = -target.z;
+      const lat = 90 - Math.acos(Math.max(-1, Math.min(1, uy))) * 180 / Math.PI;
+      const lon = (Math.atan2(uz, -ux) * 180 / Math.PI + 360) % 360 - 180;
+
+      // Look up temperature in pixel array
+      const { header: { width: w, height: h, temp_min, temp_max, ocean_sentinel }, pixels } = globeData;
+      const fi = frameIdxRef.current;
+      const tx = Math.floor(((lon + 180) / 360) * w);
+      const ty = Math.floor(((90 - lat) / 180) * h);
+      const idx = fi * w * h + ty * w + tx;
+      const u8 = pixels[idx];
+      const temp = u8 === ocean_sentinel ? null : u8 / 254 * (temp_max - temp_min) + temp_min;
+
+      setTooltip({ x: e.clientX, y: e.clientY, lat, lon, temp });
+    };
+
+    const onLeave = () => setTooltip(null);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseleave', onLeave);
+    return () => {
+      canvas.removeEventListener('mousemove', onMove);
+      canvas.removeEventListener('mouseleave', onLeave);
+    };
+  }, [sceneReady]);
+
   // Stop auto-rotate on drag
   useEffect(() => {
     const canvas = rendererRef.current?.domElement;
@@ -1076,6 +1133,24 @@ export default function GlobeApp() {
           </div>
 
           <div className="globe-tip">Drag to rotate · scroll to zoom</div>
+        </div>
+      )}
+      {tooltip && (
+        <div className="globe-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+          <div className="globe-tooltip-coord">
+            {Math.abs(tooltip.lat).toFixed(1)}°{tooltip.lat >= 0 ? 'N' : 'S'} &nbsp;
+            {Math.abs(tooltip.lon).toFixed(1)}°{tooltip.lon >= 0 ? 'E' : 'W'}
+          </div>
+          {tooltip.temp !== null ? (
+            <>
+              <div className="globe-tooltip-temp">
+                {tooltip.temp.toFixed(1)}°C &nbsp; {(tooltip.temp * 9/5 + 32).toFixed(1)}°F
+              </div>
+              <div className="globe-tooltip-label">soil temp · 0–7cm</div>
+            </>
+          ) : (
+            <div className="globe-tooltip-label">ocean</div>
+          )}
         </div>
       )}
     </div>

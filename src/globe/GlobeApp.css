@@ -30,6 +30,29 @@
   z-index: 2;
 }
 
+/* Crosshair cursor */
+.globe-canvas canvas,
+.globe-canvas { cursor: crosshair; }
+
+/* Location tooltip */
+.globe-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 20;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  white-space: nowrap;
+  transform: translate(14px, -50%);
+}
+.globe-tooltip-coord { color: var(--ink-mid); margin-bottom: 2px; }
+.globe-tooltip-temp { font-size: 13px; font-weight: 400; letter-spacing: 0.02em; }
+.globe-tooltip-label { color: var(--ink-faint); font-size: 9px; margin-top: 2px; }
+
 /* CSS vignette — centered circle, dark ring at edge, transparent center */
 /* Sized to match globe's projected radius (~27% of min viewport dimension) */
 .globe-vignette {
