@@ -12,6 +12,118 @@ interface GlobeData { header: GlobeHeader; pixels: Uint8Array; }
 
 const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
 const DEFAULT_YEAR    = 2024;
+const LIVE_YEAR       = 'live' as const;
+type YearSelection    = number | typeof LIVE_YEAR;
+
+// ── Live data fetch from Open-Meteo ──────────────────────────────────────────
+// Fetches current soil temperature at a 2° global grid, returns a full
+// 720×360 uint8 pixel array (same format as binary file) via bilinear interpolation.
+
+const LIVE_STEP = 2; // degrees — 2° source grid
+const LIVE_BATCH = 150; // conservative — well under per-minute rate limit
+const TEMP_MIN_LIVE = -55, TEMP_RANGE_LIVE = 105;
+const OCEAN_SENTINEL = 255;
+
+function tempToU8Live(t: number): number {
+  return Math.max(0, Math.min(254, Math.round((t - TEMP_MIN_LIVE) / TEMP_RANGE_LIVE * 254)));
+}
+
+async function fetchLiveData(): Promise<{ pixels: Uint8Array; date: string }> {
+  // Build 2° grid of lat/lon points
+  const lats: number[] = [], lons: number[] = [];
+  for (let lat = -88; lat <= 88; lat += LIVE_STEP)
+    for (let lon = -178; lon <= 178; lon += LIVE_STEP) {
+      lats.push(lat); lons.push(lon);
+    }
+
+  // Fetch in batches of 500
+  const results = new Map<string, number>(); // "lat,lon" → temp °C
+  let fetchDate = '';
+
+  for (let i = 0; i < lats.length; i += LIVE_BATCH) {
+    const bLats = lats.slice(i, i + LIVE_BATCH);
+    const bLons = lons.slice(i, i + LIVE_BATCH);
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}&hourly=soil_temperature_6cm&forecast_days=1&timezone=UTC&timeformat=unixtime`;
+
+    // Retry with exponential backoff on 429
+    let r: Response | null = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      r = await fetch(url);
+      if (r.status !== 429) break;
+      await new Promise(res => setTimeout(res, 2000 * (attempt + 1)));
+    }
+    if (!r || !r.ok) throw new Error(`Open-Meteo error ${r?.status ?? 'unknown'}`);
+    const data = await r.json();
+    // 600ms between batches — well within 600 req/min limit
+    if (i + LIVE_BATCH < lats.length) await new Promise(res => setTimeout(res, 600));
+    const locations = Array.isArray(data) ? data : [data];
+    for (let j = 0; j < locations.length; j++) {
+      const loc = locations[j];
+      const temps: (number | null)[] = loc.hourly?.soil_temperature_6cm ?? [];
+      const valid = temps.filter((v): v is number => v !== null);
+      if (valid.length === 0) continue;
+      const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
+      const key = `${bLats[j]},${bLons[j]}`;
+      results.set(key, mean);
+      if (!fetchDate && loc.hourly?.time?.[0]) {
+        const d = new Date(loc.hourly.time[0] * 1000);
+        fetchDate = d.toISOString().slice(0, 10);
+      }
+    }
+  }
+
+  // Build sparse 2° grid lookup
+  const GRID_W = Math.ceil(360 / LIVE_STEP) + 1;
+  const GRID_H = Math.ceil(180 / LIVE_STEP) + 1;
+  const sparse = new Float32Array(GRID_W * GRID_H).fill(NaN);
+
+  for (const [key, temp] of results) {
+    const [lat, lon] = key.split(',').map(Number);
+    const gx = Math.round((lon + 178) / LIVE_STEP);
+    const gy = Math.round((88 - lat) / LIVE_STEP);
+    sparse[gy * GRID_W + gx] = temp;
+  }
+
+  // Bilinear interpolation into 720×360 output texture
+  const W = 720, H = 360;
+  const pixels = new Uint8Array(W * H).fill(OCEAN_SENTINEL);
+
+  for (let ty = 0; ty < H; ty++) {
+    for (let tx = 0; tx < W; tx++) {
+      const lon = tx * 0.5 - 179.75;
+      const lat = 89.75 - ty * 0.5;
+
+      // Map to sparse grid coords
+      const gxf = (lon + 178) / LIVE_STEP;
+      const gyf = (88 - lat) / LIVE_STEP;
+      const gx0 = Math.floor(gxf), gy0 = Math.floor(gyf);
+      const gx1 = Math.min(gx0 + 1, GRID_W - 1);
+      const gy1 = Math.min(gy0 + 1, GRID_H - 1);
+      const fx = gxf - gx0, fy = gyf - gy0;
+
+      const v00 = sparse[gy0 * GRID_W + gx0];
+      const v10 = sparse[gy0 * GRID_W + gx1];
+      const v01 = sparse[gy1 * GRID_W + gx0];
+      const v11 = sparse[gy1 * GRID_W + gx1];
+
+      // Only interpolate if at least one neighbor is land data
+      const vals = [v00, v10, v01, v11].filter(v => !isNaN(v));
+      if (vals.length === 0) continue; // ocean — leave as sentinel
+
+      // Weighted average of available neighbors
+      let sum = 0, weight = 0;
+      if (!isNaN(v00)) { sum += v00 * (1-fx) * (1-fy); weight += (1-fx)*(1-fy); }
+      if (!isNaN(v10)) { sum += v10 *    fx  * (1-fy); weight +=    fx *(1-fy); }
+      if (!isNaN(v01)) { sum += v01 * (1-fx) *    fy;  weight += (1-fx)*   fy;  }
+      if (!isNaN(v11)) { sum += v11 *    fx  *    fy;  weight +=    fx *   fy;  }
+      if (weight === 0) continue;
+
+      pixels[ty * W + tx] = tempToU8Live(sum / weight);
+    }
+  }
+
+  return { pixels, date: fetchDate || new Date().toISOString().slice(0, 10) };
+}
 
 // ── Threshold definitions ─────────────────────────────────────────────────────
 interface Threshold {
@@ -302,6 +414,122 @@ function chaikinSphere(pts: THREE.Vector3[], iterations = 2): THREE.Vector3[] {
   return cur;
 }
 
+// ── Extract coastline segments ────────────────────────────────────────────────
+// Traces the land/ocean boundary using the ocean sentinel value (255).
+// Land = any value < 255. Ocean = 255.
+// Same marching squares approach as temperature contours but on the static mask.
+// Result cached once — coastline never changes between frames.
+function extractCoastlineSegments(pixels: Uint8Array, w: number, h: number): THREE.Vector3[][] {
+  const OCEAN  = 255;
+  const STEP   = 1;
+  const gw     = Math.floor(w / STEP);
+  const gh     = Math.floor(h / STEP);
+  // Use frame 0 only — mask is identical across all frames
+  const offset = 0;
+
+  function isLand(px: number, py: number): boolean {
+    const ix = Math.min(w - 1, Math.max(0, Math.round(px)));
+    const iy = Math.min(h - 1, Math.max(0, Math.round(py)));
+    return pixels[offset + iy * w + ix] !== OCEAN;
+  }
+
+  function pixToLatLon(px: number, py: number): [number, number] {
+    return [89.75 - py * 0.5, px * 0.5 - 179.75];
+  }
+
+  const edgeCrossings = new Map<string, [number, number]>();
+
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const px = gx * STEP, py = gy * STEP;
+      // Horizontal edge
+      if (gx < gw - 1) {
+        const l = isLand(px, py), r = isLand(px + STEP, py);
+        if (l !== r) edgeCrossings.set(`h,${gx},${gy}`, [px + STEP * 0.5, py]);
+      }
+      // Vertical edge
+      if (gy < gh - 1) {
+        const t = isLand(px, py), b = isLand(px, py + STEP);
+        if (t !== b) edgeCrossings.set(`v,${gx},${gy}`, [px, py + STEP * 0.5]);
+      }
+    }
+  }
+
+  if (edgeCrossings.size === 0) return [];
+
+  // Build adjacency via marching squares cell connections
+  const cellEdgePairs: Array<[string, string]> = [];
+  for (let gy = 0; gy < gh - 1; gy++) {
+    for (let gx = 0; gx < gw - 1; gx++) {
+      const px = gx * STEP, py = gy * STEP;
+      const corners = [
+        isLand(px, py) ? 1 : 0,
+        isLand(px + STEP, py) ? 1 : 0,
+        isLand(px + STEP, py + STEP) ? 1 : 0,
+        isLand(px, py + STEP) ? 1 : 0,
+      ];
+      const caseIdx = corners[0]*8 + corners[1]*4 + corners[2]*2 + corners[3];
+      const top    = `h,${gx},${gy}`;
+      const right  = `v,${gx+1},${gy}`;
+      const bottom = `h,${gx},${gy+1}`;
+      const left   = `v,${gx},${gy}`;
+      const connections: [string, string][] = [];
+      switch (caseIdx) {
+        case 1: case 14: connections.push([bottom, left]);   break;
+        case 2: case 13: connections.push([right,  bottom]); break;
+        case 3: case 12: connections.push([right,  left]);   break;
+        case 4: case 11: connections.push([top,    right]);  break;
+        case 5:          connections.push([top,    left], [right, bottom]); break;
+        case 6: case 9:  connections.push([top,    bottom]); break;
+        case 7: case 8:  connections.push([top,    left]);   break;
+        case 10:         connections.push([top,    right], [bottom, left]); break;
+      }
+      for (const pair of connections) {
+        if (edgeCrossings.has(pair[0]) && edgeCrossings.has(pair[1])) {
+          cellEdgePairs.push(pair);
+        }
+      }
+    }
+  }
+
+  const adj = new Map<string, string[]>();
+  for (const [a, b] of cellEdgePairs) {
+    if (!adj.has(a)) adj.set(a, []);
+    if (!adj.has(b)) adj.set(b, []);
+    adj.get(a)!.push(b);
+    adj.get(b)!.push(a);
+  }
+
+  const segments: THREE.Vector3[][] = [];
+  const used = new Set<string>();
+
+  for (const startKey of adj.keys()) {
+    if (used.has(startKey)) continue;
+    const chain: string[] = [startKey];
+    used.add(startKey);
+    let current = startKey;
+    while (true) {
+      const next = (adj.get(current) ?? []).find(n => !used.has(n));
+      if (!next) break;
+      used.add(next); chain.push(next); current = next;
+    }
+    if (chain.length < 2) continue;
+    const pts: THREE.Vector3[] = [];
+    for (const key of chain) {
+      const cp = edgeCrossings.get(key);
+      if (!cp) continue;
+      const [lat, lon] = pixToLatLon(cp[0], cp[1]);
+      pts.push(latLonToSphere(lat, lon));
+    }
+    if (pts.length >= 2) {
+      const f = pts[0], l = pts[pts.length - 1];
+      if (f.distanceTo(l) < 0.035) pts.push(pts[0].clone());
+      segments.push(chaikinSphere(pts, 2));
+    }
+  }
+  return segments;
+}
+
 // ── Per-frame contour cache ───────────────────────────────────────────────────
 interface ContourCache {
   frameIdx: number;
@@ -323,8 +551,9 @@ export default function GlobeApp() {
   const imgDataRef    = useRef<ImageData | null>(null);
   const rafRef        = useRef<number>(0);
   const frameIdxRef   = useRef(0);
-  const contourCache  = useRef<ContourCache>({ frameIdx: -1, segments: new Map() });
-  const activeIdsRef  = useRef<Set<string>>(new Set(['frost']));
+  const contourCache    = useRef<ContourCache>({ frameIdx: -1, segments: new Map() });
+  const coastlineRef    = useRef<THREE.Vector3[][] | null>(null); // computed once per dataset
+  const activeIdsRef    = useRef<Set<string>>(new Set(['frost']));
 
   const [globeData, setGlobeData]   = useState<GlobeData | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -333,8 +562,10 @@ export default function GlobeApp() {
   const [frameIdx, setFrameIdx]     = useState(0);
   const [playing, setPlaying]       = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(DEFAULT_YEAR);
-  const [yearStatus, setYearStatus] = useState<Record<number, 'loading'|'ready'|'error'>>({});
+  const [selectedYear, setSelectedYear] = useState<YearSelection>(DEFAULT_YEAR);
+  const [yearStatus, setYearStatus] = useState<Record<string, 'loading'|'ready'|'error'>>({});
+  const [liveDate, setLiveDate]     = useState<string | null>(null);
+  const [liveProgress, setLiveProgress] = useState(0);
   const [activeIds, setActiveIds]   = useState<Set<string>>(
     () => new Set(THRESHOLDS.filter(t => t.defaultOn).map(t => t.id))
   );
@@ -346,10 +577,54 @@ export default function GlobeApp() {
   // Year data cache — avoid re-fetching already loaded years
   const yearCache = useRef<Map<number, GlobeData>>(new Map());
 
+  // ── Live data fetch ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (selectedYear !== LIVE_YEAR) return;
+    setLoading(true); setError(null); setLiveProgress(0);
+    setYearStatus(s => ({ ...s, live: 'loading' }));
+
+    // Simulate progress during fetch (11 batches)
+    let batch = 0;
+    const TOTAL_BATCHES = Math.ceil(16200 * 0.33 / LIVE_BATCH); // ~land points / batch size
+    const progressInterval = setInterval(() => {
+      batch = Math.min(batch + 1, TOTAL_BATCHES - 1);
+      setLiveProgress(Math.round(batch / TOTAL_BATCHES * 90));
+    }, 1200); // ~300ms delay per batch + fetch time
+
+    fetchLiveData()
+      .then(({ pixels, date }) => {
+        clearInterval(progressInterval);
+        setLiveProgress(100);
+        const header: GlobeHeader = {
+          year: new Date().getFullYear(),
+          width: 720, height: 360, weeks: 1,
+          temp_min: TEMP_MIN_LIVE, temp_max: TEMP_MIN_LIVE + TEMP_RANGE_LIVE,
+          ocean_sentinel: OCEAN_SENTINEL,
+          dates: [date],
+        };
+        // Wrap single frame in same GlobeData format
+        const fullPixels = new Uint8Array(720 * 360);
+        fullPixels.set(pixels);
+        coastlineRef.current = null;
+        setGlobeData({ header, pixels: fullPixels });
+        setFrameIdx(0);
+        setLiveDate(date);
+        setLoading(false);
+        setYearStatus(s => ({ ...s, live: 'ready' }));
+      })
+      .catch(e => {
+        clearInterval(progressInterval);
+        setError(`Live fetch failed: ${e.message}`);
+        setLoading(false);
+        setYearStatus(s => ({ ...s, live: 'error' }));
+      });
+  }, [selectedYear]);
+
   // ── Load binary for selected year ─────────────────────────────────────────
   useEffect(() => {
-    if (yearCache.current.has(selectedYear)) {
-      setGlobeData(yearCache.current.get(selectedYear)!);
+    if (selectedYear === LIVE_YEAR) return; // handled by live effect above
+    if (yearCache.current.has(selectedYear as number)) {
+      setGlobeData(yearCache.current.get(selectedYear as number)!);
       setFrameIdx(0);
       setLoading(false);
       setError(null);
@@ -383,7 +658,8 @@ export default function GlobeApp() {
         const header: GlobeHeader = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headerLen)));
         const pixels = new Uint8Array(buf, 4 + headerLen);
         const data = { header, pixels };
-        yearCache.current.set(selectedYear, data);
+        yearCache.current.set(selectedYear as number, data);
+            coastlineRef.current = null; // reset so it rebuilds for new year
         setGlobeData(data);
         setFrameIdx(0);
         setLoading(false);
@@ -588,6 +864,29 @@ export default function GlobeApp() {
           ctx2.stroke();
         }
       }
+
+      // Draw coastline — computed once, cached permanently
+      if (!coastlineRef.current) {
+        coastlineRef.current = extractCoastlineSegments(globeDataSnap.pixels, tw, th);
+      }
+      if (coastlineRef.current.length > 0) {
+        ctx2.strokeStyle = 'rgba(0,0,0,0.22)';
+        ctx2.lineWidth   = 0.8 * dpr;
+        ctx2.lineCap     = 'round';
+        ctx2.lineJoin    = 'round';
+        ctx2.shadowBlur  = 0;
+        for (const seg of coastlineRef.current) {
+          ctx2.beginPath();
+          let drawing = false;
+          for (const pt of seg) {
+            const { x, y, visible } = projectToScreen(pt, camera, camW, camH, dpr);
+            if (!visible) { drawing = false; continue; }
+            if (!drawing) { ctx2.moveTo(x, y); drawing = true; }
+            else { ctx2.lineTo(x, y); }
+          }
+          ctx2.stroke();
+        }
+      }
     };
     animate();
     setSceneReady(true);
@@ -694,9 +993,9 @@ export default function GlobeApp() {
         <div className="globe-overlay">
           <div className="globe-loading">
             <div className="globe-spinner" />
-            <div>Loading soil temperature data…</div>
-            <div className="globe-progress-bar"><div className="globe-progress-fill" style={{ width: `${loadProgress}%` }} /></div>
-            <div className="globe-loading-sub">{loadProgress}% · 720×360 · 53 weeks · 2024</div>
+            <div>{selectedYear === LIVE_YEAR ? 'Fetching live soil temperature…' : 'Loading soil temperature data…'}</div>
+            <div className="globe-progress-bar"><div className="globe-progress-fill" style={{ width: `${selectedYear === LIVE_YEAR ? liveProgress : loadProgress}%` }} /></div>
+            <div className="globe-loading-sub">{selectedYear === LIVE_YEAR ? `${liveProgress}% · Open-Meteo · 2° grid · ~11 requests` : `${loadProgress}% · 720×360 · ${weeks} weeks · ${selectedYear}`}</div>
           </div>
         </div>
       )}
@@ -718,19 +1017,26 @@ export default function GlobeApp() {
           </div>
 
           <div className="globe-hud-date">
-            <div className="globe-date-label">{dateLabel}</div>
-            <div className="globe-week-label">Week {frameIdx + 1} of {weeks}</div>
+            {selectedYear === LIVE_YEAR && <div className="globe-live-badge">● LIVE</div>}
+            <div className="globe-date-label">{selectedYear === LIVE_YEAR && liveDate ? (() => { const d = new Date(liveDate + 'T00:00:00Z'); return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; })() : dateLabel}</div>
+            {selectedYear !== LIVE_YEAR && <div className="globe-week-label">Week {frameIdx + 1} of {weeks}</div>}
+            {selectedYear === LIVE_YEAR && <div className="globe-week-label">Open-Meteo · current week</div>}
           </div>
 
           <div className="globe-controls">
             <div className="globe-year-selector">
               {AVAILABLE_YEARS.map(y => (
                 <button key={y}
-                  className={`globe-year-btn ${y === selectedYear ? 'active' : ''} ${yearStatus[y] === 'error' ? 'unavailable' : ''}`}
+                  className={`globe-year-btn ${y === selectedYear ? 'active' : ''} ${yearStatus[String(y)] === 'error' ? 'unavailable' : ''}`}
                   onClick={() => { setPlaying(false); setSelectedYear(y); }}
-                  disabled={yearStatus[y] === 'loading'}
+                  disabled={yearStatus[String(y)] === 'loading'}
                 >{y}</button>
               ))}
+              <button
+                className={`globe-year-btn globe-live-btn ${selectedYear === LIVE_YEAR ? 'active' : ''}`}
+                onClick={() => { setPlaying(false); setSelectedYear(LIVE_YEAR); }}
+                disabled={yearStatus['live'] === 'loading'}
+              >LIVE</button>
             </div>
             <div className="globe-playback-row">
               <button className="globe-play-btn" onClick={() => setPlaying(p => !p)}>{playing ? '⏸' : '▶'}</button>

@@ -69,10 +69,10 @@ def process_year(year: int, raw_dir: Path, out_dir: Path):
     lat_vals = da["latitude"].values   # descending: 90 → -90
     lon_vals = da["longitude"].values  # -180 → 179.9
 
-    # Cap to months actually present in the data
-    last_time = pd.Timestamp(time_vals[-1]).to_pydatetime().date()
+    # Cap to end of last available month (inclusive)
+    last_month_end = pd.Timestamp(time_vals[-1]).to_period('M').to_timestamp('M').date()
     all_dates = weekly_mondays(year)
-    dates = [d for d in all_dates if d <= last_time]
+    dates = [d for d in all_dates if d <= last_month_end]
     if not dates:
         dates = all_dates[:1]
     weeks = len(dates)

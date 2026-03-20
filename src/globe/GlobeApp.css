@@ -162,6 +162,21 @@
   background: var(--ink); color: var(--paper);
 }
 .globe-year-btn.unavailable { opacity: 0.25; cursor: not-allowed; }
+.globe-live-btn { border-color: rgba(220, 60, 60, 0.4) !important; color: rgba(200, 60, 60, 0.8) !important; letter-spacing: 0.1em; }
+.globe-live-btn:hover { background: rgba(220, 60, 60, 0.06) !important; color: rgba(200, 60, 60, 1) !important; }
+.globe-live-btn.active { background: rgba(200, 40, 40, 0.9) !important; color: #fff !important; border-color: rgba(200,40,40,0.9) !important; }
+
+.globe-live-badge {
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: 0.18em;
+  color: rgba(200, 40, 40, 0.9);
+  margin-bottom: 4px;
+  animation: livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 .globe-year-btn:disabled { opacity: 0.4; cursor: wait; }
 
 .globe-playback-row { display: flex; align-items: center; gap: 12px; width: 100%; }
