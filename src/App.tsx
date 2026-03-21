@@ -16,6 +16,8 @@ const PMTILES_URL = import.meta.env.VITE_PMTILES_URL ?? '/data/parcels.pmtiles';
 const POLYGON_PMTILES_URL = import.meta.env.VITE_PMTILES_URL
   ? import.meta.env.VITE_PMTILES_URL.replace('parcels.pmtiles', 'parcels_polygon.pmtiles')
   : '/data/parcels_polygon.pmtiles';
+// R2 public CDN — raster park score tiles
+const R2_BASE = 'https://pub-c148dd69cdd64387884a3fe8b31e7420.r2.dev';
 
 // Register PMTiles protocol
 const protocol = new Protocol();
@@ -106,17 +108,18 @@ function getYearBuiltColor(year: number): string {
 
 // ── MapLibre expressions ──────────────────────────────────────
 
-// ColorBrewer YlGn 9 — sequential pale yellow → dark forest green
+// Park score palette — warm gray basemap → sage → deep forest green
+// Low scores dissolve into #F2EFE9 basemap; high scores = rich landscape green
 const YLGN9 = [
-  [0,   'rgb(255,255,229)'],  // #ffffe5
-  [12,  'rgb(247,252,185)'],  // #f7fcb9
-  [25,  'rgb(217,240,163)'],  // #d9f0a3
-  [37,  'rgb(173,221,142)'],  // #addd8e
-  [50,  'rgb(120,198,121)'],  // #78c679
-  [62,  'rgb(65,171,93)'],    // #41ab5d
-  [75,  'rgb(35,139,69)'],    // #238b45
-  [87,  'rgb(0,109,44)'],     // #006d2c
-  [100, 'rgb(0,68,27)'],      // #004d1b
+  [0,   'rgba(238,234,226,0)'],   // transparent at 0 — park parcel exclusion handled separately
+  [5,   'rgb(226,230,214)'],      // barely-there sage tint
+  [20,  'rgb(196,215,178)'],      // pale sage
+  [35,  'rgb(156,196,140)'],      // light sage
+  [50,  'rgb(108,168,106)'],      // medium green
+  [65,  'rgb(66,138,74)'],        // forest sage
+  [80,  'rgb(30,106,46)'],        // deep green
+  [92,  'rgb(10,78,28)'],         // rich forest
+  [100, 'rgb(2,52,16)'],          // near-black forest
 ];
 
 const PARK_SCORE_COLOR = [
@@ -595,7 +598,7 @@ export default function App() {
       // Sits below parcel dot/polygon layers; fades out at z14 where polygons take over
       map.addSource('raster-park-score', {
         type: 'raster',
-        tiles: ['/raster/park_score/{z}/{x}/{y}.png'],
+        tiles: [`${R2_BASE}/raster/park_score/{z}/{x}/{y}.png`],
         tileSize: 256,
         minzoom: 8,
         maxzoom: 13,

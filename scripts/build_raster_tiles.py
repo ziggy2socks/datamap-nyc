@@ -99,18 +99,19 @@ def make_colormap(stops):
                     break
     return lut
 
-# ColorBrewer YlGn 9 — sequential pale yellow → dark forest green
-# Alpha: low scores semi-transparent (let basemap show through), high scores more opaque
+# Park access colormap — warm gray basemap → sage → deep forest green
+# Designed to sit on #F2EFE9 warm gray basemap (datamap.nyc light mode)
+# Low scores blend into the basemap; high scores read as rich landscape green
+# Alpha ramp: low=120 (semi-transparent, basemap bleeds through), high=230
 LUT_PARK = make_colormap([
-    (0.00, (255, 255, 229, 140)),   # #ffffe5 — very light, nearly transparent
-    (0.12, (247, 252, 185, 160)),   # #f7fcb9
-    (0.25, (217, 240, 163, 175)),   # #d9f0a3
-    (0.37, (173, 221, 142, 190)),   # #addd8e
-    (0.50, (120, 198, 121, 200)),   # #78c679
-    (0.62, ( 65, 171,  93, 210)),   # #41ab5d
-    (0.75, ( 35, 139,  69, 215)),   # #238b45
-    (0.87, (  0, 109,  44, 220)),   # #006d2c
-    (1.00, (  0,  68,  27, 225)),   # #004d1b — deep forest, most opaque
+    (0.00, (238, 234, 226, 120)),   # near-basemap warm gray — nearly invisible
+    (0.15, (208, 222, 196, 145)),   # very pale sage
+    (0.30, (168, 204, 153, 165)),   # light sage green
+    (0.45, (116, 175, 115, 185)),   # medium sage
+    (0.60, ( 72, 144,  82, 200)),   # forest sage
+    (0.75, ( 38, 112,  54, 212)),   # deep green
+    (0.88, ( 16,  84,  36, 222)),   # rich forest
+    (1.00, (  4,  56,  20, 232)),   # near-black forest — maximum value
 ])
 
 # Sequential cool slate (building height)
