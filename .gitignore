@@ -13,3 +13,4 @@ public/data/parcels.pmtiles
 data/era5-raw/
 public/data/soil_globe_2024.json
 public/data/soil_globe_manifest.json
+public/raster/park_score/.wrangler/
