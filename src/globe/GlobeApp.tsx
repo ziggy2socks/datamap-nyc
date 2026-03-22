@@ -15,115 +15,35 @@ const DEFAULT_YEAR    = 2024;
 const LIVE_YEAR       = 'live' as const;
 type YearSelection    = number | typeof LIVE_YEAR;
 
-// ── Live data fetch from Open-Meteo ──────────────────────────────────────────
-// Fetches current soil temperature at a 2° global grid, returns a full
-// 720×360 uint8 pixel array (same format as binary file) via bilinear interpolation.
+// ── Live data: load pre-baked daily forecast tile ────────────────────────────
+// Instead of calling Open-Meteo directly from the browser (rate limit issues),
+// we load a pre-baked binary tile that a daily cron bakes at ~6am UTC.
+// Script: scripts/bake-forecast-today.py
+// File:   public/data/soil_globe_texture_forecast.bin
+// Format: identical to historical .bin files (same header + uint8 pixels)
+// Staleness: max 24h — acceptable for soil temperature visualization.
 
-const LIVE_STEP = 2; // degrees — 2° source grid
-const LIVE_BATCH = 150; // conservative — well under per-minute rate limit
-const TEMP_MIN_LIVE = -55, TEMP_RANGE_LIVE = 105;
 const OCEAN_SENTINEL = 255;
 
-function tempToU8Live(t: number): number {
-  return Math.max(0, Math.min(254, Math.round((t - TEMP_MIN_LIVE) / TEMP_RANGE_LIVE * 254)));
-}
-
 async function fetchLiveData(): Promise<{ pixels: Uint8Array; date: string }> {
-  // Build 2° grid of lat/lon points
-  const lats: number[] = [], lons: number[] = [];
-  for (let lat = -88; lat <= 88; lat += LIVE_STEP)
-    for (let lon = -178; lon <= 178; lon += LIVE_STEP) {
-      lats.push(lat); lons.push(lon);
-    }
+  const url = '/data/soil_globe_texture_forecast.bin';
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Forecast tile not found (${r.status}). Run bake-forecast-today.py to generate it.`);
 
-  // Fetch in batches of 500
-  const results = new Map<string, number>(); // "lat,lon" → temp °C
-  let fetchDate = '';
+  const buf = await r.arrayBuffer();
+  const view = new DataView(buf);
+  const hlen = view.getUint32(0, true);
+  const headerText = new TextDecoder().decode(new Uint8Array(buf, 4, hlen));
+  const header = JSON.parse(headerText);
 
-  for (let i = 0; i < lats.length; i += LIVE_BATCH) {
-    const bLats = lats.slice(i, i + LIVE_BATCH);
-    const bLons = lons.slice(i, i + LIVE_BATCH);
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}&hourly=soil_temperature_6cm&forecast_days=1&timezone=UTC&timeformat=unixtime`;
+  const pixelOffset = 4 + hlen;
+  const pixels = new Uint8Array(buf, pixelOffset, 720 * 360);
 
-    // Retry with exponential backoff on 429
-    let r: Response | null = null;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      r = await fetch(url);
-      if (r.status !== 429) break;
-      await new Promise(res => setTimeout(res, 2000 * (attempt + 1)));
-    }
-    if (!r || !r.ok) throw new Error(`Open-Meteo error ${r?.status ?? 'unknown'}`);
-    const data = await r.json();
-    // 600ms between batches — well within 600 req/min limit
-    if (i + LIVE_BATCH < lats.length) await new Promise(res => setTimeout(res, 600));
-    const locations = Array.isArray(data) ? data : [data];
-    for (let j = 0; j < locations.length; j++) {
-      const loc = locations[j];
-      const temps: (number | null)[] = loc.hourly?.soil_temperature_6cm ?? [];
-      const valid = temps.filter((v): v is number => v !== null);
-      if (valid.length === 0) continue;
-      const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
-      const key = `${bLats[j]},${bLons[j]}`;
-      results.set(key, mean);
-      if (!fetchDate && loc.hourly?.time?.[0]) {
-        const d = new Date(loc.hourly.time[0] * 1000);
-        fetchDate = d.toISOString().slice(0, 10);
-      }
-    }
-  }
-
-  // Build sparse 2° grid lookup
-  const GRID_W = Math.ceil(360 / LIVE_STEP) + 1;
-  const GRID_H = Math.ceil(180 / LIVE_STEP) + 1;
-  const sparse = new Float32Array(GRID_W * GRID_H).fill(NaN);
-
-  for (const [key, temp] of results) {
-    const [lat, lon] = key.split(',').map(Number);
-    const gx = Math.round((lon + 178) / LIVE_STEP);
-    const gy = Math.round((88 - lat) / LIVE_STEP);
-    sparse[gy * GRID_W + gx] = temp;
-  }
-
-  // Bilinear interpolation into 720×360 output texture
-  const W = 720, H = 360;
-  const pixels = new Uint8Array(W * H).fill(OCEAN_SENTINEL);
-
-  for (let ty = 0; ty < H; ty++) {
-    for (let tx = 0; tx < W; tx++) {
-      const lon = tx * 0.5 - 179.75;
-      const lat = 89.75 - ty * 0.5;
-
-      // Map to sparse grid coords
-      const gxf = (lon + 178) / LIVE_STEP;
-      const gyf = (88 - lat) / LIVE_STEP;
-      const gx0 = Math.floor(gxf), gy0 = Math.floor(gyf);
-      const gx1 = Math.min(gx0 + 1, GRID_W - 1);
-      const gy1 = Math.min(gy0 + 1, GRID_H - 1);
-      const fx = gxf - gx0, fy = gyf - gy0;
-
-      const v00 = sparse[gy0 * GRID_W + gx0];
-      const v10 = sparse[gy0 * GRID_W + gx1];
-      const v01 = sparse[gy1 * GRID_W + gx0];
-      const v11 = sparse[gy1 * GRID_W + gx1];
-
-      // Only interpolate if at least one neighbor is land data
-      const vals = [v00, v10, v01, v11].filter(v => !isNaN(v));
-      if (vals.length === 0) continue; // ocean — leave as sentinel
-
-      // Weighted average of available neighbors
-      let sum = 0, weight = 0;
-      if (!isNaN(v00)) { sum += v00 * (1-fx) * (1-fy); weight += (1-fx)*(1-fy); }
-      if (!isNaN(v10)) { sum += v10 *    fx  * (1-fy); weight +=    fx *(1-fy); }
-      if (!isNaN(v01)) { sum += v01 * (1-fx) *    fy;  weight += (1-fx)*   fy;  }
-      if (!isNaN(v11)) { sum += v11 *    fx  *    fy;  weight +=    fx *   fy;  }
-      if (weight === 0) continue;
-
-      pixels[ty * W + tx] = tempToU8Live(sum / weight);
-    }
-  }
-
-  return { pixels, date: fetchDate || new Date().toISOString().slice(0, 10) };
+  const date = header.dates?.[0] ?? header.date ?? new Date().toISOString().slice(0, 10);
+  return { pixels, date };
 }
+
+
 
 // ── Threshold definitions ─────────────────────────────────────────────────────
 interface Threshold {
@@ -581,27 +501,20 @@ export default function GlobeApp() {
   const yearCache = useRef<Map<number, GlobeData>>(new Map());
 
   // ── Live data fetch ────────────────────────────────────────────────────────
+  // Loads pre-baked daily forecast tile (baked by scripts/bake-forecast-today.py)
+  // instead of hitting Open-Meteo directly. Tile is regenerated every ~6am UTC.
   useEffect(() => {
     if (selectedYear !== LIVE_YEAR) return;
-    setLoading(true); setError(null); setLiveProgress(0);
+    setLoading(true); setError(null); setLiveProgress(50);
     setYearStatus(s => ({ ...s, live: 'loading' }));
-
-    // Simulate progress during fetch (11 batches)
-    let batch = 0;
-    const TOTAL_BATCHES = Math.ceil(16200 * 0.33 / LIVE_BATCH); // ~land points / batch size
-    const progressInterval = setInterval(() => {
-      batch = Math.min(batch + 1, TOTAL_BATCHES - 1);
-      setLiveProgress(Math.round(batch / TOTAL_BATCHES * 90));
-    }, 1200); // ~300ms delay per batch + fetch time
 
     fetchLiveData()
       .then(({ pixels, date }) => {
-        clearInterval(progressInterval);
         setLiveProgress(100);
         const header: GlobeHeader = {
           year: new Date().getFullYear(),
           width: 720, height: 360, weeks: 1,
-          temp_min: TEMP_MIN_LIVE, temp_max: TEMP_MIN_LIVE + TEMP_RANGE_LIVE,
+          temp_min: -55, temp_max: 50,
           ocean_sentinel: OCEAN_SENTINEL,
           dates: [date],
         };
@@ -616,8 +529,7 @@ export default function GlobeApp() {
         setYearStatus(s => ({ ...s, live: 'ready' }));
       })
       .catch(e => {
-        clearInterval(progressInterval);
-        setError(`Live fetch failed: ${e.message}`);
+        setError(`Today's forecast tile not available: ${e.message}`);
         setLoading(false);
         setYearStatus(s => ({ ...s, live: 'error' }));
       });
@@ -1050,9 +962,9 @@ export default function GlobeApp() {
         <div className="globe-overlay">
           <div className="globe-loading">
             <div className="globe-spinner" />
-            <div>{selectedYear === LIVE_YEAR ? 'Fetching live soil temperature…' : 'Loading soil temperature data…'}</div>
+            <div>{selectedYear === LIVE_YEAR ? 'Loading today\'s forecast…' : 'Loading soil temperature data…'}</div>
             <div className="globe-progress-bar"><div className="globe-progress-fill" style={{ width: `${selectedYear === LIVE_YEAR ? liveProgress : loadProgress}%` }} /></div>
-            <div className="globe-loading-sub">{selectedYear === LIVE_YEAR ? `${liveProgress}% · Open-Meteo · 2° grid · ~11 requests` : `${loadProgress}% · 720×360 · ${weeks} weeks · ${selectedYear}`}</div>
+            <div className="globe-loading-sub">{selectedYear === LIVE_YEAR ? 'Daily forecast · 720×360 · baked 6am UTC' : `${loadProgress}% · 720×360 · ${weeks} weeks · ${selectedYear}`}</div>
           </div>
         </div>
       )}
@@ -1074,10 +986,10 @@ export default function GlobeApp() {
           </div>
 
           <div className="globe-hud-date">
-            {selectedYear === LIVE_YEAR && <div className="globe-live-badge">● LIVE</div>}
+            {selectedYear === LIVE_YEAR && <div className="globe-live-badge">● TODAY</div>}
             <div className="globe-date-label">{selectedYear === LIVE_YEAR && liveDate ? (() => { const d = new Date(liveDate + 'T00:00:00Z'); return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; })() : dateLabel}</div>
             {selectedYear !== LIVE_YEAR && <div className="globe-week-label">Week {frameIdx + 1} of {weeks}</div>}
-            {selectedYear === LIVE_YEAR && <div className="globe-week-label">Open-Meteo · current week</div>}
+            {selectedYear === LIVE_YEAR && <div className="globe-week-label">Open-Meteo forecast · updated daily</div>}
           </div>
 
           <div className="globe-controls">
