@@ -11,7 +11,7 @@ async function render() {
     const mod = await import('./radar/RadarApp');
     Component = mod.default;
   } else if (path.startsWith('/suitability')) {
-    const mod = await import('./SuitabilityMap');
+    const mod = await import('./App');           // McHarg suitability layer map
     Component = mod.default;
   } else if (path.startsWith('/permits')) {
     const mod = await import('./permits/PermitsApp');
