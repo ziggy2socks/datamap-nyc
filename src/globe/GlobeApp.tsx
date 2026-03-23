@@ -26,9 +26,9 @@ type YearSelection    = number | typeof LIVE_YEAR;
 const OCEAN_SENTINEL = 255;
 
 async function fetchLiveData(): Promise<{ pixels: Uint8Array; date: string }> {
-  const url = '/data/soil_globe_texture_forecast.bin';
+  const url = '/api/forecast';
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`Forecast tile not found (${r.status}). Run bake-forecast-today.py to generate it.`);
+  if (!r.ok) throw new Error(`Forecast unavailable (${r.status})`);
 
   const buf = await r.arrayBuffer();
   const view = new DataView(buf);
