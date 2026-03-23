@@ -29,10 +29,15 @@ interface ForecastManifest {
 const OCEAN_SENTINEL = 255;
 
 async function loadForecastManifest(): Promise<ForecastManifest> {
-  // Vercel Blob public URL pattern — manifest is always at this path
-  const r = await fetch('/api/forecast-manifest');
-  if (!r.ok) throw new Error(`Forecast not available yet (${r.status}). Cron runs at 2am UTC.`);
-  return r.json();
+  const r = await fetch('/data/forecast/manifest.json');
+  if (!r.ok) throw new Error(`Forecast not available yet. Check back after 2am UTC.`);
+  const raw = await r.json();
+  // Normalise: ensure files have a `url` field (GitHub Action bake uses `path`)
+  const files = (raw.files ?? []).map((f: { day: number; date: string; url?: string; path?: string }) => ({
+    ...f,
+    url: f.url ?? f.path,
+  }));
+  return { ...raw, files };
 }
 
 async function loadForecastDay(url: string): Promise<{ pixels: Uint8Array; date: string }> {

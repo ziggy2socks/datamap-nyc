@@ -1,0 +1,42 @@
+name: Bake 7-day forecast tiles
+
+on:
+  schedule:
+    # 2am UTC nightly (10pm ET / 7pm PT)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to push the commit back to master
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests numpy
+
+      - name: Bake forecast tiles
+        run: |
+          mkdir -p public/data/forecast
+          python3 scripts/bake-forecast-7day.py
+
+      - name: Commit and push tiles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/data/forecast/
+          # Only commit if there are changes
+          git diff --staged --quiet || git commit -m "chore: bake forecast tiles $(date -u +%Y-%m-%d)"
+          git push

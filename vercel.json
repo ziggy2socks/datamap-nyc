@@ -2,17 +2,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "functions": {
-    "api/cron-forecast.js": {
-      "maxDuration": 300
-    }
-  },
-  "crons": [
-    {
-      "path": "/api/cron-forecast",
-      "schedule": "0 2 * * *"
-    }
-  ],
   "rewrites": [
     { "source": "/api/permits/:path*", "destination": "https://data.cityofnewyork.us/resource/rbx6-tga4.json/:path*" },
     { "source": "/api/jobs/:path*",    "destination": "https://data.cityofnewyork.us/resource/w9ak-ipjd.json/:path*" },
