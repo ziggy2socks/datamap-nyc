@@ -10,8 +10,9 @@ interface GlobeHeader {
 }
 interface GlobeData { header: GlobeHeader; pixels: Uint8Array; }
 
-const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
-const DEFAULT_YEAR    = 2024;
+// 2020–2025 bins hosted on R2 (pending credentials) — only 2026 on Vercel for now
+const AVAILABLE_YEARS = [2026];
+const DEFAULT_YEAR    = 2026;
 const FORECAST_YEAR   = 'forecast' as const;
 type YearSelection    = number | typeof FORECAST_YEAR;
 
@@ -595,7 +596,7 @@ export default function GlobeApp() {
     setProgress(0);
     setYearStatus(s => ({ ...s, [selectedYear]: 'loading' }));
 
-    fetch(`/data/soil_globe_texture_${selectedYear}.bin?v=2`)
+    fetch(`/data/soil_globe_texture_${selectedYear}.bin`)
       .then(async r => {
         if (!r.ok) throw new Error(`${selectedYear} data not yet available`);
         const total = Number(r.headers.get('content-length') ?? 0);

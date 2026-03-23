@@ -14,3 +14,12 @@ data/era5-raw/
 public/data/soil_globe_2024.json
 public/data/soil_globe_manifest.json
 public/raster/park_score/.wrangler/
+.vercel
+# ERA5 bins too large for Vercel Hobby (100MB limit) — serve from R2 when ready
+# Keeping only 2026 (2.5MB) as temp until R2 is configured
+public/data/soil_globe_texture_2020.bin
+public/data/soil_globe_texture_2021.bin
+public/data/soil_globe_texture_2022.bin
+public/data/soil_globe_texture_2023.bin
+public/data/soil_globe_texture_2024.bin
+public/data/soil_globe_texture_2025.bin
