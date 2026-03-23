@@ -595,7 +595,7 @@ export default function GlobeApp() {
     setProgress(0);
     setYearStatus(s => ({ ...s, [selectedYear]: 'loading' }));
 
-    fetch(`/data/soil_globe_texture_${selectedYear}.bin`)
+    fetch(`/data/soil_globe_texture_${selectedYear}.bin?v=2`)
       .then(async r => {
         if (!r.ok) throw new Error(`${selectedYear} data not yet available`);
         const total = Number(r.headers.get('content-length') ?? 0);
@@ -1017,7 +1017,7 @@ export default function GlobeApp() {
         <div className="globe-overlay">
           <div className="globe-error">
             <div>⚠ Data not ready</div>
-            <div className="globe-error-sub">Run <code>python3 scripts/process-era5-texture.py --year 2024</code></div>
+            <div className="globe-error-sub">Try refreshing — if this persists, the data file may be temporarily unavailable.</div>
             <div className="globe-error-detail">{error}</div>
           </div>
         </div>
