@@ -22,12 +22,12 @@ import requests
 from datetime import date, timedelta
 from pathlib import Path
 
-FORECAST_URL = "https://forecast-api.open-meteo.com/v1/forecast"
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 VARIABLE = "soil_temperature_0_to_7cm"
-STEP = 2          # degrees — 2° source grid
+STEP = 4          # degrees — 4° grid (fewer points, faster, still plenty of detail)
 W, H = 720, 360   # texture resolution
-BATCH = 150       # points per API request
-DELAY = 0.5       # seconds between batches
+BATCH = 50        # points per API request (open-meteo multi-point limit)
+DELAY = 1.0       # seconds between batches
 MAX_RETRIES = 4
 OCEAN = 255
 TEMP_MIN = -55.0
@@ -67,6 +67,7 @@ def fetch_batch_all_days(lats_b, lons_b, start_date, end_date):
         f"&start_date={start_date}"
         f"&end_date={end_date}"
         f"&timezone=UTC"
+        f"&forecast_days={FORECAST_DAYS}"
     )
     for attempt in range(MAX_RETRIES):
         try:
