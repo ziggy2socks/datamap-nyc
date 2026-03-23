@@ -547,10 +547,13 @@ export default function GlobeApp() {
         setYearStatus(s => ({ ...s, forecast: 'ready' }));
         void date;
       })
-      .catch(e => {
-        setError(e.message);
+      .catch(() => {
+        // Don't set global error — just mark forecast as unavailable so
+        // the user can click a year and recover without hard refresh
         setLoading(false);
         setYearStatus(s => ({ ...s, forecast: 'error' }));
+        // Fall back to 2026 data so globe isn't blank
+        setSelectedYear(DEFAULT_YEAR);
       });
   }, [selectedYear]);
 
@@ -1053,9 +1056,10 @@ export default function GlobeApp() {
                 >{y}</button>
               ))}
               <button
-                className={`globe-year-btn globe-live-btn ${selectedYear === FORECAST_YEAR ? 'active' : ''}`}
+                className={`globe-year-btn globe-live-btn ${selectedYear === FORECAST_YEAR ? 'active' : ''} ${yearStatus['forecast'] === 'error' ? 'unavailable' : ''}`}
                 onClick={() => { setPlaying(false); forecastCache.current.clear(); setSelectedYear(FORECAST_YEAR); }}
                 disabled={yearStatus['forecast'] === 'loading'}
+                title={yearStatus['forecast'] === 'error' ? 'Forecast not yet available — check back after 2am UTC' : 'View 7-day forecast'}
               >FORECAST</button>
             </div>
             {selectedYear === FORECAST_YEAR && forecastManifest ? (
