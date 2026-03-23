@@ -3,12 +3,17 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "functions": {
-    "api/forecast.js": {
+    "api/cron-forecast.js": {
       "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron-forecast",
+      "schedule": "0 2 * * *"
+    }
+  ],
   "rewrites": [
-    { "source": "/api/forecast", "destination": "/api/forecast" },
     { "source": "/api/permits/:path*", "destination": "https://data.cityofnewyork.us/resource/rbx6-tga4.json/:path*" },
     { "source": "/api/jobs/:path*",    "destination": "https://data.cityofnewyork.us/resource/w9ak-ipjd.json/:path*" },
     { "source": "/api/311",            "destination": "https://data.cityofnewyork.us/resource/erm2-nwe9.json" },

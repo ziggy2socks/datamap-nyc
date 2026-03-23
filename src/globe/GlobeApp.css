@@ -202,6 +202,22 @@
 }
 .globe-year-btn:disabled { opacity: 0.4; cursor: wait; }
 
+/* Forecast day picker */
+.globe-forecast-days {
+  display: flex; flex-wrap: wrap; gap: 4px; width: 100%;
+}
+.globe-forecast-day-btn {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em;
+  padding: 3px 8px; border: 1px solid var(--rule);
+  background: transparent; color: var(--ink-dim); cursor: pointer;
+  border-radius: 2px; transition: all 0.15s;
+}
+.globe-forecast-day-btn:hover { background: rgba(0,0,0,0.05); color: var(--ink); }
+.globe-forecast-day-btn.active {
+  background: var(--ink); color: var(--paper);
+  border-color: var(--ink);
+}
+
 .globe-playback-row { display: flex; align-items: center; gap: 12px; width: 100%; }
 
 .globe-play-btn {

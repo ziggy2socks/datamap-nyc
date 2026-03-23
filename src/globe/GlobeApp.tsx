@@ -12,34 +12,39 @@ interface GlobeData { header: GlobeHeader; pixels: Uint8Array; }
 
 const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
 const DEFAULT_YEAR    = 2024;
-const LIVE_YEAR       = 'live' as const;
-type YearSelection    = number | typeof LIVE_YEAR;
+const FORECAST_YEAR   = 'forecast' as const;
+type YearSelection    = number | typeof FORECAST_YEAR;
 
-// ── Live data: load pre-baked daily forecast tile ────────────────────────────
-// Instead of calling Open-Meteo directly from the browser (rate limit issues),
-// we load a pre-baked binary tile that a daily cron bakes at ~6am UTC.
-// Script: scripts/bake-forecast-today.py
-// File:   public/data/soil_globe_texture_forecast.bin
-// Format: identical to historical .bin files (same header + uint8 pixels)
-// Staleness: max 24h — acceptable for soil temperature visualization.
+// ── Forecast manifest ─────────────────────────────────────────────────────────
+// Nightly cron (api/cron-forecast.js) bakes 7 forecast tiles to Vercel Blob.
+// Manifest at forecast/manifest.json lists the blob URLs for each day.
+interface ForecastManifest {
+  generated: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  files: { day: number; date: string; url: string }[];
+}
 
 const OCEAN_SENTINEL = 255;
 
-async function fetchLiveData(): Promise<{ pixels: Uint8Array; date: string }> {
-  const url = '/api/forecast';
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Forecast unavailable (${r.status})`);
+async function loadForecastManifest(): Promise<ForecastManifest> {
+  // Vercel Blob public URL pattern — manifest is always at this path
+  const r = await fetch('/api/forecast-manifest');
+  if (!r.ok) throw new Error(`Forecast not available yet (${r.status}). Cron runs at 2am UTC.`);
+  return r.json();
+}
 
+async function loadForecastDay(url: string): Promise<{ pixels: Uint8Array; date: string }> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Forecast day unavailable (${r.status})`);
   const buf = await r.arrayBuffer();
   const view = new DataView(buf);
   const hlen = view.getUint32(0, true);
   const headerText = new TextDecoder().decode(new Uint8Array(buf, 4, hlen));
   const header = JSON.parse(headerText);
-
-  const pixelOffset = 4 + hlen;
-  const pixels = new Uint8Array(buf, pixelOffset, 720 * 360);
-
-  const date = header.dates?.[0] ?? header.date ?? new Date().toISOString().slice(0, 10);
+  const pixels = new Uint8Array(buf.slice(4 + hlen, 4 + hlen + 720 * 360));
+  const date = header.dates?.[0] ?? header.date ?? '';
   return { pixels, date };
 }
 
@@ -484,8 +489,11 @@ export default function GlobeApp() {
   const [sceneReady, setSceneReady] = useState(false);
   const [selectedYear, setSelectedYear] = useState<YearSelection>(DEFAULT_YEAR);
   const [yearStatus, setYearStatus] = useState<Record<string, 'loading'|'ready'|'error'>>({});
-  const [liveDate, setLiveDate]     = useState<string | null>(null);
   const [liveProgress, setLiveProgress] = useState(0);
+  // Forecast state
+  const [forecastManifest, setForecastManifest] = useState<ForecastManifest | null>(null);
+  const [forecastDayIdx, setForecastDayIdx] = useState(0);
+  const forecastCache = useRef<Map<number, GlobeData>>(new Map());
   const [tooltip, setTooltip]       = useState<{ x: number; y: number; lat: number; lon: number; temp: number | null } | null>(null);
   const raycasterRef                = useRef(new THREE.Raycaster());
   const mousePosRef                 = useRef(new THREE.Vector2());
@@ -500,44 +508,76 @@ export default function GlobeApp() {
   // Year data cache — avoid re-fetching already loaded years
   const yearCache = useRef<Map<number, GlobeData>>(new Map());
 
-  // ── Live data fetch ────────────────────────────────────────────────────────
-  // Loads pre-baked daily forecast tile (baked by scripts/bake-forecast-today.py)
-  // instead of hitting Open-Meteo directly. Tile is regenerated every ~6am UTC.
+  // ── Forecast: load manifest when forecast mode selected ───────────────────
   useEffect(() => {
-    if (selectedYear !== LIVE_YEAR) return;
-    setLoading(true); setError(null); setLiveProgress(50);
-    setYearStatus(s => ({ ...s, live: 'loading' }));
+    if (selectedYear !== FORECAST_YEAR) return;
+    setLoading(true); setError(null); setLiveProgress(20);
+    setYearStatus(s => ({ ...s, forecast: 'loading' }));
 
-    fetchLiveData()
-      .then(({ pixels, date }) => {
-        setLiveProgress(100);
+    loadForecastManifest()
+      .then(manifest => {
+        setForecastManifest(manifest);
+        setForecastDayIdx(0);
+        setLiveProgress(50);
+        // Load day 0 immediately
+        return loadForecastDay(manifest.files[0].url).then(({ pixels, date }) => ({ pixels, date, manifest }));
+      })
+      .then(({ pixels, date, manifest }) => {
         const header: GlobeHeader = {
           year: new Date().getFullYear(),
-          width: 720, height: 360, weeks: 1,
+          width: 720, height: 360, weeks: manifest.days,
           temp_min: -55, temp_max: 50,
           ocean_sentinel: OCEAN_SENTINEL,
-          dates: [date],
+          dates: manifest.files.map(f => f.date),
         };
-        // Wrap single frame in same GlobeData format
         const fullPixels = new Uint8Array(720 * 360);
         fullPixels.set(pixels);
+        forecastCache.current.set(0, { header, pixels: fullPixels });
         coastlineRef.current = null;
         setGlobeData({ header, pixels: fullPixels });
         setFrameIdx(0);
-        setLiveDate(date);
+        setLiveProgress(100);
         setLoading(false);
-        setYearStatus(s => ({ ...s, live: 'ready' }));
+        setYearStatus(s => ({ ...s, forecast: 'ready' }));
+        void date;
       })
       .catch(e => {
-        setError(`Today's forecast tile not available: ${e.message}`);
+        setError(e.message);
         setLoading(false);
-        setYearStatus(s => ({ ...s, live: 'error' }));
+        setYearStatus(s => ({ ...s, forecast: 'error' }));
       });
   }, [selectedYear]);
 
+  // ── Forecast: load a specific day when scrubber moves ─────────────────────
+  useEffect(() => {
+    if (selectedYear !== FORECAST_YEAR || !forecastManifest) return;
+    const d = forecastDayIdx;
+    if (forecastCache.current.has(d)) {
+      const cached = forecastCache.current.get(d)!;
+      setGlobeData(cached);
+      return;
+    }
+    const fileEntry = forecastManifest.files[d];
+    if (!fileEntry) return;
+
+    loadForecastDay(fileEntry.url).then(({ pixels }) => {
+      const header: GlobeHeader = {
+        year: new Date().getFullYear(),
+        width: 720, height: 360, weeks: forecastManifest.days,
+        temp_min: -55, temp_max: 50,
+        ocean_sentinel: OCEAN_SENTINEL,
+        dates: forecastManifest.files.map(f => f.date),
+      };
+      const fullPixels = new Uint8Array(720 * 360);
+      fullPixels.set(pixels);
+      forecastCache.current.set(d, { header, pixels: fullPixels });
+      setGlobeData({ header, pixels: fullPixels });
+    }).catch(() => {/* silently skip failed day */});
+  }, [forecastDayIdx, forecastManifest, selectedYear]);
+
   // ── Load binary for selected year ─────────────────────────────────────────
   useEffect(() => {
-    if (selectedYear === LIVE_YEAR) return; // handled by live effect above
+    if (selectedYear === FORECAST_YEAR) return; // handled by forecast effects above
     if (yearCache.current.has(selectedYear as number)) {
       setGlobeData(yearCache.current.get(selectedYear as number)!);
       setFrameIdx(0);
@@ -962,9 +1002,9 @@ export default function GlobeApp() {
         <div className="globe-overlay">
           <div className="globe-loading">
             <div className="globe-spinner" />
-            <div>{selectedYear === LIVE_YEAR ? 'Loading today\'s forecast…' : 'Loading soil temperature data…'}</div>
-            <div className="globe-progress-bar"><div className="globe-progress-fill" style={{ width: `${selectedYear === LIVE_YEAR ? liveProgress : loadProgress}%` }} /></div>
-            <div className="globe-loading-sub">{selectedYear === LIVE_YEAR ? 'Daily forecast · 720×360 · baked 6am UTC' : `${loadProgress}% · 720×360 · ${weeks} weeks · ${selectedYear}`}</div>
+            <div>{selectedYear === FORECAST_YEAR ? 'Loading forecast…' : 'Loading soil temperature data…'}</div>
+            <div className="globe-progress-bar"><div className="globe-progress-fill" style={{ width: `${selectedYear === FORECAST_YEAR ? liveProgress : loadProgress}%` }} /></div>
+            <div className="globe-loading-sub">{selectedYear === FORECAST_YEAR ? '7-day forecast · 720×360 · updated nightly' : `${loadProgress}% · 720×360 · ${weeks} weeks · ${selectedYear}`}</div>
           </div>
         </div>
       )}
@@ -986,10 +1026,15 @@ export default function GlobeApp() {
           </div>
 
           <div className="globe-hud-date">
-            {selectedYear === LIVE_YEAR && <div className="globe-live-badge">● TODAY</div>}
-            <div className="globe-date-label">{selectedYear === LIVE_YEAR && liveDate ? (() => { const d = new Date(liveDate + 'T00:00:00Z'); return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; })() : dateLabel}</div>
-            {selectedYear !== LIVE_YEAR && <div className="globe-week-label">Week {frameIdx + 1} of {weeks}</div>}
-            {selectedYear === LIVE_YEAR && <div className="globe-week-label">Open-Meteo forecast · updated daily</div>}
+            {selectedYear === FORECAST_YEAR && <div className="globe-live-badge">● FORECAST</div>}
+            <div className="globe-date-label">
+              {selectedYear === FORECAST_YEAR && forecastManifest
+                ? (() => { const d = new Date(forecastManifest.files[forecastDayIdx]?.date + 'T00:00:00Z'); return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; })()
+                : dateLabel}
+            </div>
+            {selectedYear === FORECAST_YEAR && forecastManifest
+              ? <div className="globe-week-label">Day {forecastDayIdx + 1} of {forecastManifest.days} · Open-Meteo · updated nightly</div>
+              : <div className="globe-week-label">Week {frameIdx + 1} of {weeks}</div>}
           </div>
 
           <div className="globe-controls">
@@ -1002,17 +1047,34 @@ export default function GlobeApp() {
                 >{y}</button>
               ))}
               <button
-                className={`globe-year-btn globe-live-btn ${selectedYear === LIVE_YEAR ? 'active' : ''}`}
-                onClick={() => { setPlaying(false); setSelectedYear(LIVE_YEAR); }}
-                disabled={yearStatus['live'] === 'loading'}
-              >LIVE</button>
+                className={`globe-year-btn globe-live-btn ${selectedYear === FORECAST_YEAR ? 'active' : ''}`}
+                onClick={() => { setPlaying(false); forecastCache.current.clear(); setSelectedYear(FORECAST_YEAR); }}
+                disabled={yearStatus['forecast'] === 'loading'}
+              >FORECAST</button>
             </div>
-            <div className="globe-playback-row">
-              <button className="globe-play-btn" onClick={() => setPlaying(p => !p)}>{playing ? '⏸' : '▶'}</button>
-              <input type="range" min={0} max={weeks - 1} value={frameIdx}
-                onChange={e => { setPlaying(false); setFrameIdx(Number(e.target.value)); }}
-                className="globe-scrubber" />
-            </div>
+            {selectedYear === FORECAST_YEAR && forecastManifest ? (
+              <div className="globe-playback-row">
+                <div className="globe-forecast-days">
+                  {forecastManifest.files.map((f, i) => {
+                    const d = new Date(f.date + 'T00:00:00Z');
+                    const label = i === 0 ? 'Today' : `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+                    return (
+                      <button key={i}
+                        className={`globe-forecast-day-btn ${i === forecastDayIdx ? 'active' : ''}`}
+                        onClick={() => setForecastDayIdx(i)}
+                      >{label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="globe-playback-row">
+                <button className="globe-play-btn" onClick={() => setPlaying(p => !p)}>{playing ? '⏸' : '▶'}</button>
+                <input type="range" min={0} max={weeks - 1} value={frameIdx}
+                  onChange={e => { setPlaying(false); setFrameIdx(Number(e.target.value)); }}
+                  className="globe-scrubber" />
+              </div>
+            )}
           </div>
 
           <div className="globe-legend-panel">
