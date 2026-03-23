@@ -39,4 +39,5 @@ jobs:
           git add public/data/forecast/
           # Only commit if there are changes
           git diff --staged --quiet || git commit -m "chore: bake forecast tiles $(date -u +%Y-%m-%d)"
+          git pull --rebase origin master
           git push
