@@ -599,7 +599,7 @@ export default function GlobeApp() {
     setProgress(0);
     setYearStatus(s => ({ ...s, [selectedYear]: 'loading' }));
 
-    fetch(`/data/soil_globe_texture_${selectedYear}.bin`)
+    fetch(`/data/soil_globe_texture_${selectedYear}.bin?v=3`)
       .then(async r => {
         if (!r.ok) throw new Error(`${selectedYear} data not yet available`);
         const total = Number(r.headers.get('content-length') ?? 0);
