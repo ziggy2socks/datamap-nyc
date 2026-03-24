@@ -10,7 +10,9 @@ interface GlobeHeader {
 }
 interface GlobeData { header: GlobeHeader; pixels: Uint8Array; }
 
-// 2020–2025 bins hosted on R2 (pending credentials) — only 2026 on Vercel for now
+// ERA5 bins served from GitHub raw (too large for Vercel Hobby 100MB limit)
+// R2 migration pending — will restore full year selector when done
+const GH_RAW = 'https://raw.githubusercontent.com/ziggy2socks/datamap-nyc/master/public/data';
 const AVAILABLE_YEARS = [2026];
 const DEFAULT_YEAR    = 2026;
 const FORECAST_YEAR   = 'forecast' as const;
@@ -599,7 +601,7 @@ export default function GlobeApp() {
     setProgress(0);
     setYearStatus(s => ({ ...s, [selectedYear]: 'loading' }));
 
-    fetch(`/data/soil_globe_${selectedYear}.bin`)
+    fetch(`${GH_RAW}/soil_globe_texture_${selectedYear}.bin`)
       .then(async r => {
         if (!r.ok) throw new Error(`${selectedYear} data not yet available`);
         const total = Number(r.headers.get('content-length') ?? 0);
