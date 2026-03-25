@@ -16,6 +16,9 @@ async function render() {
   } else if (path.startsWith('/permits')) {
     const mod = await import('./permits/PermitsApp');
     Component = mod.default;
+  } else if (path.startsWith('/live')) {
+    const mod = await import('./live/LiveApp');
+    Component = mod.default;
   } else if (path.startsWith('/globe') || path.startsWith('/soil')) {
     const mod = await import('./globe/GlobeApp');
     Component = mod.default;
