@@ -31,14 +31,16 @@ interface ForecastManifest {
 
 const OCEAN_SENTINEL = 255;
 
+const GH_FORECAST = 'https://raw.githubusercontent.com/ziggy2socks/datamap-nyc/master/public/data/forecast';
+
 async function loadForecastManifest(): Promise<ForecastManifest> {
-  const r = await fetch('/data/forecast/manifest.json');
+  const r = await fetch(`${GH_FORECAST}/manifest.json`);
   if (!r.ok) throw new Error(`Forecast not available yet. Check back after 2am UTC.`);
   const raw = await r.json();
-  // Normalise: ensure files have a `url` field (GitHub Action bake uses `path`)
+  // Normalise: ensure files have a `url` field; rewrite paths to GitHub raw
   const files = (raw.files ?? []).map((f: { day: number; date: string; url?: string; path?: string }) => ({
     ...f,
-    url: f.url ?? f.path,
+    url: `${GH_FORECAST}/forecast-d${f.day}.bin`,
   }));
   return { ...raw, files };
 }
