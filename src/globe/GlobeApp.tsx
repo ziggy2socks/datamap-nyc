@@ -551,13 +551,10 @@ export default function GlobeApp() {
         setYearStatus(s => ({ ...s, forecast: 'ready' }));
         void date;
       })
-      .catch(() => {
-        // Don't set global error — just mark forecast as unavailable so
-        // the user can click a year and recover without hard refresh
+      .catch((e: Error) => {
         setLoading(false);
+        setError(`Forecast error: ${e.message}`);
         setYearStatus(s => ({ ...s, forecast: 'error' }));
-        // Fall back to 2026 data so globe isn't blank
-        setSelectedYear(DEFAULT_YEAR);
       });
   }, [selectedYear]);
 
