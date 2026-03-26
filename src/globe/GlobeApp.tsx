@@ -544,8 +544,9 @@ export default function GlobeApp() {
         fullPixels.set(pixels);
         forecastCache.current.set(0, { header, pixels: fullPixels });
         coastlineRef.current = null;
-        setGlobeData({ header, pixels: fullPixels });
+        frameIdxRef.current = 0; // reset ref immediately so texture draw uses offset=0
         setFrameIdx(0);
+        setGlobeData({ header, pixels: fullPixels });
         setLiveProgress(100);
         setLoading(false);
         setYearStatus(s => ({ ...s, forecast: 'ready' }));
@@ -564,6 +565,8 @@ export default function GlobeApp() {
     const d = forecastDayIdx;
     if (forecastCache.current.has(d)) {
       const cached = forecastCache.current.get(d)!;
+      frameIdxRef.current = 0;
+      setFrameIdx(0);
       setGlobeData(cached);
       return;
     }
@@ -581,6 +584,8 @@ export default function GlobeApp() {
       const fullPixels = new Uint8Array(720 * 360);
       fullPixels.set(pixels);
       forecastCache.current.set(d, { header, pixels: fullPixels });
+      frameIdxRef.current = 0;
+      setFrameIdx(0);
       setGlobeData({ header, pixels: fullPixels });
     }).catch(() => {/* silently skip failed day */});
   }, [forecastDayIdx, forecastManifest, selectedYear]);
