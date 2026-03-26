@@ -1,2 +1,9 @@
 scripts/
 data/
+# ERA5 bins served from GitHub raw — excluded from Vercel deployment
+public/data/soil_globe_texture_2020.bin
+public/data/soil_globe_texture_2021.bin
+public/data/soil_globe_texture_2022.bin
+public/data/soil_globe_texture_2023.bin
+public/data/soil_globe_texture_2024.bin
+public/data/soil_globe_texture_2025.bin

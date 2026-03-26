@@ -11,10 +11,10 @@ interface GlobeHeader {
 interface GlobeData { header: GlobeHeader; pixels: Uint8Array; }
 
 // ERA5 bins served from GitHub raw (too large for Vercel Hobby 100MB limit)
-// R2 migration pending — will restore full year selector when done
+// Tracked in git, excluded from Vercel via .vercelignore
 const GH_RAW = 'https://raw.githubusercontent.com/ziggy2socks/datamap-nyc/master/public/data';
-const AVAILABLE_YEARS = [2026];
-const DEFAULT_YEAR    = 2026;
+const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+const DEFAULT_YEAR    = 2024;
 const FORECAST_YEAR   = 'forecast' as const;
 type YearSelection    = number | typeof FORECAST_YEAR;
 
