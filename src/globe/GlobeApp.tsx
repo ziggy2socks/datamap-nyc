@@ -550,6 +550,13 @@ export default function GlobeApp() {
   // Year data cache — avoid re-fetching already loaded years
   const yearCache = useRef<Map<number, GlobeData>>(new Map());
 
+  // ── Eagerly load forecast manifest on mount so timeline includes forecast ──
+  useEffect(() => {
+    loadForecastManifest()
+      .then(manifest => setForecastManifest(manifest))
+      .catch(() => {/* forecast unavailable — timeline shows historical only */});
+  }, []);
+
   // ── Forecast: load manifest when forecast mode selected ───────────────────
   useEffect(() => {
     if (selectedYear !== FORECAST_YEAR) return;
