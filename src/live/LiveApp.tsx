@@ -1,7 +1,7 @@
 /**
  * LiveApp — /live route
  * Real-time city feed on the isometric NYC map.
- * Layers: aircraft (ADS-B), subway (MTA stub), 311/24h, weather radar (stub)
+ * Layers: aircraft (ADS-B), F train (shape-following), 311/24h, weather radar (stub)
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import OpenSeadragon from 'openseadragon';
@@ -9,6 +9,7 @@ import { latlngToImagePx, IMAGE_DIMS } from '../permits/coordinates';
 import { fetchAircraft, type AircraftState, type AircraftKind } from './sources/aircraft';
 import { fetchSubwayTrains, type SubwayTrain, SUBWAY_COLORS } from './sources/subway';
 import { fetch311Recent, type Complaint311 } from './sources/recent311';
+import { fetchFTrains, type FTrain, F_COLOR, POLL_MS as F_POLL_MS } from './sources/fLine';
 import './LiveApp.css';
 
 // ── OSD tile config (identical to IsoView) ────────────────────
@@ -56,6 +57,7 @@ function acColor(kind: AircraftKind): string {
 // ── Layer toggle state ────────────────────────────────────────
 interface LayerState {
   aircraft: boolean;
+  fTrain: boolean;
   subway: boolean;
   complaints: boolean;
   radar: boolean;
@@ -100,13 +102,13 @@ export default function LiveApp() {
 
   // Layer visibility
   const [layers, setLayers] = useState<LayerState>({
-    aircraft: true, subway: true, complaints: true, radar: false,
+    aircraft: true, fTrain: true, subway: true, complaints: true, radar: false,
   });
   const layersRef = useRef(layers);
   useEffect(() => { layersRef.current = layers; }, [layers]);
 
   // Live counts
-  const [counts, setCounts] = useState({ aircraft: 0, subway: 0, complaints: 0 });
+  const [counts, setCounts] = useState({ aircraft: 0, fTrain: 0, subway: 0, complaints: 0 });
 
   // Tooltip
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -123,6 +125,15 @@ export default function LiveApp() {
 
   // ── Subway overlay state ──────────────────────────────────
   const subwayOverlaysRef = useRef<Map<string, HTMLElement>>(new Map());
+
+  // ── F train overlay state ─────────────────────────────────
+  const fTrainOverlaysRef = useRef<Map<string, HTMLElement>>(new Map());
+  const fTrainRafRef      = useRef<number | null>(null);
+  const fTrainActiveRef   = useRef(false);
+  // Tween state for smooth movement between polls
+  interface FTween { fromX: number; fromY: number; toX: number; toY: number; startMs: number; durationMs: number }
+  const fTrainTweensRef   = useRef<Map<string, FTween>>(new Map());
+  const fTrainDataRef     = useRef<Map<string, FTrain>>(new Map());
 
   // ── 311 overlay state ─────────────────────────────────────
   const c311OverlaysRef = useRef<Map<string, HTMLElement>>(new Map());
@@ -324,6 +335,132 @@ export default function LiveApp() {
     }
   }, [layers.aircraft]);
 
+  // ── F train rendering ─────────────────────────────────────
+  const placeFTrains = useCallback((trains: FTrain[]) => {
+    const viewer = osdRef.current;
+    if (!viewer) return;
+    const existing = fTrainOverlaysRef.current;
+    const tweens   = fTrainTweensRef.current;
+    const dataMap  = fTrainDataRef.current;
+    const nowMs    = Date.now();
+    const seen     = new Set<string>();
+
+    for (const train of trains) {
+      const { tripId, vpX, vpY, direction } = train;
+      seen.add(tripId);
+      dataMap.set(tripId, train);
+
+      let el = existing.get(tripId);
+      if (!el) {
+        el = document.createElement('div');
+        el.style.cssText = `
+          width: 10px; height: 10px; border-radius: 50%;
+          background: ${F_COLOR}; border: 1.5px solid rgba(255,255,255,0.5);
+          pointer-events: auto; cursor: pointer;
+          box-shadow: 0 0 4px rgba(255,99,25,0.6);
+        `;
+        el.addEventListener('mouseenter', (e: MouseEvent) => {
+          e.stopImmediatePropagation();
+          const d = dataMap.get(tripId);
+          if (!d) return;
+          setTooltip({
+            lines: [
+              `F Train · ${d.direction === 'N' ? 'Northbound' : 'Southbound'}`,
+              d.stopName,
+            ],
+            x: e.clientX + 12,
+            y: e.clientY - 10,
+          });
+        });
+        el.addEventListener('mousemove', (e: MouseEvent) => {
+          e.stopImmediatePropagation();
+          setTooltip(prev => prev ? { ...prev, x: e.clientX + 12, y: e.clientY - 10 } : null);
+        });
+        el.addEventListener('mouseleave', (e: MouseEvent) => {
+          e.stopImmediatePropagation();
+          setTooltip(null);
+        });
+        el.addEventListener('pointerdown', (e: PointerEvent) => e.stopImmediatePropagation());
+
+        viewer.addOverlay({
+          element: el,
+          location: new OpenSeadragon.Point(vpX, vpY),
+          placement: OpenSeadragon.Placement.CENTER,
+        });
+        existing.set(tripId, el);
+        tweens.set(tripId, { fromX: vpX, fromY: vpY, toX: vpX, toY: vpY, startMs: nowMs, durationMs: F_POLL_MS });
+      } else {
+        // Update tween: pick up from current interpolated position
+        const cur = tweens.get(tripId);
+        if (cur) {
+          const elapsed = nowMs - cur.startMs;
+          const t = Math.min(elapsed / cur.durationMs, 1);
+          const curX = cur.fromX + (cur.toX - cur.fromX) * t;
+          const curY = cur.fromY + (cur.toY - cur.fromY) * t;
+          tweens.set(tripId, { fromX: curX, fromY: curY, toX: vpX, toY: vpY, startMs: nowMs, durationMs: F_POLL_MS });
+        }
+      }
+      void direction; // available for future icon rotation
+    }
+
+    // Remove stale trains
+    for (const [id, el] of existing) {
+      if (!seen.has(id)) {
+        try { viewer.removeOverlay(el); } catch { /* ignore */ }
+        existing.delete(id);
+        tweens.delete(id);
+        dataMap.delete(id);
+      }
+    }
+
+    // Start/restart RAF animation loop
+    if (fTrainRafRef.current !== null) cancelAnimationFrame(fTrainRafRef.current);
+    const animate = () => {
+      if (!fTrainActiveRef.current) return;
+      const nowRaf = Date.now();
+      for (const [id, tween] of tweens) {
+        const el = existing.get(id);
+        if (!el) continue;
+        const elapsed = nowRaf - tween.startMs;
+        const t = Math.min(elapsed / tween.durationMs, 1);
+        const x = tween.fromX + (tween.toX - tween.fromX) * t;
+        const y = tween.fromY + (tween.toY - tween.fromY) * t;
+        try { viewer.updateOverlay(el, new OpenSeadragon.Point(x, y), OpenSeadragon.Placement.CENTER); } catch { /* ignore */ }
+      }
+      fTrainRafRef.current = requestAnimationFrame(animate);
+    };
+    fTrainActiveRef.current = true;
+    fTrainRafRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  useEffect(() => {
+    fTrainActiveRef.current = true;
+    const poll = async () => {
+      if (!fTrainActiveRef.current) return;
+      try {
+        const trains = await fetchFTrains();
+        setCounts(prev => ({ ...prev, fTrain: trains.length }));
+        if (layersRef.current.fTrain) placeFTrains(trains);
+      } catch { /* silent */ }
+    };
+    if (dziLoaded) { poll(); }
+    const iv = setInterval(poll, F_POLL_MS);
+    return () => { fTrainActiveRef.current = false; clearInterval(iv); if (fTrainRafRef.current !== null) cancelAnimationFrame(fTrainRafRef.current); };
+  }, [dziLoaded, placeFTrains]);
+
+  useEffect(() => {
+    if (!layers.fTrain) {
+      fTrainActiveRef.current = false;
+      if (fTrainRafRef.current !== null) { cancelAnimationFrame(fTrainRafRef.current); fTrainRafRef.current = null; }
+      const viewer = osdRef.current;
+      if (viewer) {
+        fTrainOverlaysRef.current.forEach(el => { try { viewer.removeOverlay(el); } catch { /* ignore */ } });
+        fTrainOverlaysRef.current.clear();
+        fTrainTweensRef.current.clear();
+      }
+    }
+  }, [layers.fTrain]);
+
   // ── Subway (stub — ready for MTA wiring) ─────────────────
   const placeSubway = useCallback((trains: SubwayTrain[]) => {
     const viewer = osdRef.current;
@@ -496,6 +633,7 @@ export default function LiveApp() {
   // ── HUD layer definitions ─────────────────────────────────
   const hudLayers: { key: keyof LayerState; label: string; color: string; countKey?: keyof typeof counts }[] = [
     { key: 'aircraft',   label: 'Aircraft',    color: '#c0d8ff', countKey: 'aircraft' },
+    { key: 'fTrain',     label: 'F Train',     color: F_COLOR,   countKey: 'fTrain' },
     { key: 'subway',     label: 'Subway',      color: '#6CBE45', countKey: 'subway' },
     { key: 'complaints', label: '311 / 24h',   color: '#F5A623', countKey: 'complaints' },
     { key: 'radar',      label: 'Weather',     color: '#60d8a0' },
