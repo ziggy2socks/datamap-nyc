@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import './GlobeApp.css';
@@ -481,29 +481,7 @@ interface TimelineEntry {
   isForecast: boolean;
 }
 
-// Build historical entries once at module load (not on every render)
-const HISTORICAL_ENTRIES: TimelineEntry[] = (() => {
-  const entries: TimelineEntry[] = [];
-  const start = new Date('2020-01-06T00:00:00Z');
-  const today = new Date();
-  let d = new Date(start);
-  const countPerYear: Record<number, number> = {};
-  while (d <= today) {
-    const yr = d.getUTCFullYear();
-    if (AVAILABLE_YEARS.includes(yr)) {
-      countPerYear[yr] = (countPerYear[yr] ?? 0);
-      entries.push({
-        year: yr,
-        frameIdx: countPerYear[yr],
-        date: d.toISOString().slice(0, 10),
-        isForecast: false,
-      });
-      countPerYear[yr]++;
-    }
-    d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
-  }
-  return entries;
-})();
+// Historical entries are built dynamically inside the component from loaded bin headers.
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GlobeApp() {
@@ -1024,8 +1002,38 @@ export default function GlobeApp() {
 
   const weeks = globeData?.header.weeks ?? 53;
 
-  // ── Timeline entries ──────────────────────────────────────────────────────
-  const historicalEntries = HISTORICAL_ENTRIES;
+  // ── Timeline entries built from actual loaded bin headers ─────────────────
+  // We build entries for each year using the dates embedded in the bin header.
+  // This ensures we only show weeks where data actually exists.
+  const historicalEntries = useMemo(() => {
+    const entries: TimelineEntry[] = [];
+    for (const yr of AVAILABLE_YEARS) {
+      const data = yearCache.current.get(yr);
+      if (data) {
+        data.header.dates.forEach((date, fi) => {
+          entries.push({ year: yr, frameIdx: fi, date, isForecast: false });
+        });
+      } else {
+        // Year not loaded yet — generate placeholder entries from known weekly cadence
+        // so the track shows the right proportions even before data loads.
+        // These will be replaced once the bin loads.
+        const start = new Date(`${yr}-01-06T00:00:00Z`);
+        const end = new Date(`${yr}-12-31T00:00:00Z`);
+        let d = new Date(start);
+        let fi = 0;
+        while (d <= end) {
+          entries.push({ year: yr, frameIdx: fi, date: d.toISOString().slice(0,10), isForecast: false });
+          d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
+          fi++;
+        }
+      }
+    }
+    // Clamp to today — don't show future dates in historical zone
+    const todayStr = new Date().toISOString().slice(0,10);
+    return entries.filter(e => e.date <= todayStr);
+  // Rebuild when globeData changes (new year loaded)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globeData]);
 
   const forecastEntries: TimelineEntry[] = forecastManifest
     ? forecastManifest.files.map((f, i) => ({
@@ -1133,9 +1141,11 @@ export default function GlobeApp() {
 
   const jumpToLatest = useCallback(() => {
     setPlaying(false);
-    // Jump to last historical entry (most recent ERA5 data)
-    setTimelinePos(historicalEntries.length - 1);
-  }, [historicalEntries.length]);
+    // Jump to last historical entry that has real data (loaded year)
+    const lastReal = [...historicalEntries].reverse().find(e => yearCache.current.has(e.year as number));
+    const idx = lastReal ? timelineEntries.indexOf(lastReal) : historicalEntries.length - 1;
+    setTimelinePos(Math.max(0, idx));
+  }, [historicalEntries, timelineEntries]);
 
   // Build tick mark positions for years and months
   const timelineTicks = (() => {
