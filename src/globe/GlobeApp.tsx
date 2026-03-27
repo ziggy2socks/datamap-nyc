@@ -473,6 +473,38 @@ interface ContourCache {
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// ── Timeline entry type ───────────────────────────────────────────────────────
+interface TimelineEntry {
+  year: YearSelection;
+  frameIdx: number;
+  date: string;
+  isForecast: boolean;
+}
+
+// Build historical entries once at module load (not on every render)
+const HISTORICAL_ENTRIES: TimelineEntry[] = (() => {
+  const entries: TimelineEntry[] = [];
+  const start = new Date('2020-01-06T00:00:00Z');
+  const today = new Date();
+  let d = new Date(start);
+  const countPerYear: Record<number, number> = {};
+  while (d <= today) {
+    const yr = d.getUTCFullYear();
+    if (AVAILABLE_YEARS.includes(yr)) {
+      countPerYear[yr] = (countPerYear[yr] ?? 0);
+      entries.push({
+        year: yr,
+        frameIdx: countPerYear[yr],
+        date: d.toISOString().slice(0, 10),
+        isForecast: false,
+      });
+      countPerYear[yr]++;
+    }
+    d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
+  }
+  return entries;
+})();
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function GlobeApp() {
   const mountRef      = useRef<HTMLDivElement>(null);
@@ -985,35 +1017,8 @@ export default function GlobeApp() {
 
   const weeks = globeData?.header.weeks ?? 53;
 
-  // ── Timeline entries: one entry per data frame across all years + forecast ──
-  interface TimelineEntry {
-    year: YearSelection;
-    frameIdx: number;
-    date: string;       // ISO date string
-    isForecast: boolean;
-  }
-
-  // Build static entries for historical years (weekly from Jan 2020)
-  const historicalEntries = (() => {
-    const entries: TimelineEntry[] = [];
-    // Generate weekly Mondays from 2020-01-06 to today
-    const start = new Date('2020-01-06T00:00:00Z');
-    const today = new Date();
-    let d = new Date(start);
-    while (d <= today) {
-      const yr = d.getUTCFullYear();
-      if (AVAILABLE_YEARS.includes(yr)) {
-        entries.push({
-          year: yr,
-          frameIdx: entries.filter(e => e.year === yr).length,
-          date: d.toISOString().slice(0, 10),
-          isForecast: false,
-        });
-      }
-      d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
-    }
-    return entries;
-  })();
+  // ── Timeline entries ──────────────────────────────────────────────────────
+  const historicalEntries = HISTORICAL_ENTRIES;
 
   const forecastEntries: TimelineEntry[] = forecastManifest
     ? forecastManifest.files.map((f, i) => ({
@@ -1036,6 +1041,7 @@ export default function GlobeApp() {
   useEffect(() => {
     const entry = timelineEntries[timelinePos];
     if (!entry) return;
+    timelineDriving.current = true;
     if (entry.isForecast) {
       if (selectedYear !== FORECAST_YEAR) {
         forecastCache.current.clear();
@@ -1052,16 +1058,20 @@ export default function GlobeApp() {
       frameIdxRef.current = entry.frameIdx;
       setFrameIdx(entry.frameIdx);
     }
+    // Clear flag after React flush
+    setTimeout(() => { timelineDriving.current = false; }, 50);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timelinePos]);
 
-  // Sync timelinePos when year/frame changes externally (e.g. playback)
+  // Sync timelinePos during playback (but not when timeline itself drove the change)
+  const timelineDriving = useRef(false);
   useEffect(() => {
+    if (timelineDriving.current) return; // timeline already set this, don't echo back
     if (selectedYear === FORECAST_YEAR) return;
     const idx = timelineEntries.findIndex(e => e.year === selectedYear && e.frameIdx === frameIdx);
     if (idx >= 0 && idx !== timelinePos) setTimelinePos(idx);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frameIdx, selectedYear]);
+  }, [frameIdx]);
 
   // Current display date string
   const currentDateStr = (() => {
