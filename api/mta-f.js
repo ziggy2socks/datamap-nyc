@@ -57,6 +57,7 @@ function parseMessage(buf, parseFn) {
 }
 
 // Parse TripDescriptor (field 1 of VehiclePosition)
+// MTA TripDescriptor: field 1=trip_id, field 3=start_date, field 5=route_id
 function parseTripDesc(buf) {
   const r = {};
   let pos = 0;
@@ -65,15 +66,13 @@ function parseTripDesc(buf) {
     pos = p;
     if (pos >= buf.length) break;
     const fn = Number(tag >> 3n), wt = Number(tag & 7n);
-    if (fn === 1 && wt === 2) { // trip_id
+    if (wt === 2) {
       const { bytes, pos: np } = readBytes(buf, pos); pos = np;
-      r.trip_id = new TextDecoder().decode(bytes);
-    } else if (fn === 5 && wt === 2) { // route_id
-      const { bytes, pos: np } = readBytes(buf, pos); pos = np;
-      r.route_id = new TextDecoder().decode(bytes);
-    } else if (fn === 3 && wt === 2) { // direction_id (string in some versions)
-      const { bytes, pos: np } = readBytes(buf, pos); pos = np;
-      r.direction_id = new TextDecoder().decode(bytes);
+      if (fn === 1) r.trip_id   = new TextDecoder().decode(bytes);
+      if (fn === 5) r.route_id  = new TextDecoder().decode(bytes);
+    } else if (wt === 0) {
+      const { val, pos: np } = readVarint(buf, pos); pos = np;
+      if (fn === 4) r.direction_id = Number(val); // 0=N, 1=S in standard spec
     } else {
       pos = skipField(buf, pos, wt);
     }
@@ -82,6 +81,8 @@ function parseTripDesc(buf) {
 }
 
 // Parse VehiclePosition (from entity.vehicle)
+// MTA uses non-standard field numbers vs GTFS-RT spec:
+//   field 1 = trip, field 4 = current_status, field 7 = stop_id, field 8 = current_stop_sequence, field 9 = timestamp
 function parseVehiclePos(buf) {
   const r = {};
   let pos = 0;
@@ -93,18 +94,18 @@ function parseVehiclePos(buf) {
     if (fn === 1 && wt === 2) { // trip
       const { bytes, pos: np } = readBytes(buf, pos); pos = np;
       r.trip = parseTripDesc(bytes);
-    } else if (fn === 2 && wt === 2) { // position (skip — no GPS)
+    } else if (fn === 2 && wt === 2) { // position (skip)
       const { pos: np } = readBytes(buf, pos); pos = np;
-    } else if (fn === 3 && wt === 0) { // current_stop_sequence
-      const { val, pos: np } = readVarint(buf, pos); pos = np;
-      r.current_stop_sequence = Number(val);
-    } else if (fn === 4 && wt === 2) { // stop_id
-      const { bytes, pos: np } = readBytes(buf, pos); pos = np;
-      r.stop_id = new TextDecoder().decode(bytes);
-    } else if (fn === 5 && wt === 0) { // current_status (0=INCOMING, 1=STOPPED, 2=IN_TRANSIT)
+    } else if (fn === 4 && wt === 0) { // current_status (MTA field 4)
       const { val, pos: np } = readVarint(buf, pos); pos = np;
       r.current_status = Number(val);
-    } else if (fn === 6 && wt === 0) { // timestamp
+    } else if (fn === 7 && wt === 2) { // stop_id (MTA field 7)
+      const { bytes, pos: np } = readBytes(buf, pos); pos = np;
+      r.stop_id = new TextDecoder().decode(bytes);
+    } else if (fn === 8 && wt === 0) { // current_stop_sequence (MTA field 8)
+      const { val, pos: np } = readVarint(buf, pos); pos = np;
+      r.current_stop_sequence = Number(val);
+    } else if (fn === 9 && wt === 0) { // timestamp (MTA field 9)
       const { val, pos: np } = readVarint(buf, pos); pos = np;
       r.timestamp = Number(val);
     } else {
@@ -157,14 +158,11 @@ function parseFeedMessage(buf) {
 
 export default async function handler(req) {
   try {
-    // MTA feed 16 = BDFM (includes F train)
-    const mtaRes = await fetch('https://api-endpoint.mta.info/Feeds/16', {
-      headers: {
-        // No API key needed for basic access per MTA developer portal
-        'Accept': 'application/x-protobuf',
-      },
-      cf: { cacheTtl: 8 }, // Cloudflare edge cache 8s
-    });
+    // MTA GTFS-RT BDFM feed (includes F train) — no API key required
+    const mtaRes = await fetch(
+      'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm',
+      { headers: { 'Accept': 'application/x-protobuf' } }
+    );
 
     if (!mtaRes.ok) {
       return new Response(JSON.stringify({ error: `MTA returned ${mtaRes.status}` }), {

@@ -44,7 +44,9 @@ function getColor(type: string): string {
 
 export async function fetch311Recent(): Promise<Complaint311[]> {
   try {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // Socrata needs 'YYYY-MM-DDTHH:MM:SS' — no trailing Z, no milliseconds
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 19);
     const url = `/api/311?$where=created_date>'${since}'&$limit=500&$order=created_date DESC&$select=unique_key,complaint_type,created_date,latitude,longitude`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return [];
