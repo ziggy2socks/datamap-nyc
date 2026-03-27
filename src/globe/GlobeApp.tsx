@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import './GlobeApp.css';
@@ -983,16 +983,150 @@ export default function GlobeApp() {
     });
   };
 
-  const dateLabel = (() => {
-    if (!globeData?.header.dates[frameIdx]) return '';
-    const d = new Date(globeData.header.dates[frameIdx] + 'T00:00:00Z');
-    return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  const weeks = globeData?.header.weeks ?? 53;
+
+  // ── Timeline entries: one entry per data frame across all years + forecast ──
+  interface TimelineEntry {
+    year: YearSelection;
+    frameIdx: number;
+    date: string;       // ISO date string
+    isForecast: boolean;
+  }
+
+  // Build static entries for historical years (weekly from Jan 2020)
+  const historicalEntries = (() => {
+    const entries: TimelineEntry[] = [];
+    // Generate weekly Mondays from 2020-01-06 to today
+    const start = new Date('2020-01-06T00:00:00Z');
+    const today = new Date();
+    let d = new Date(start);
+    while (d <= today) {
+      const yr = d.getUTCFullYear();
+      if (AVAILABLE_YEARS.includes(yr)) {
+        entries.push({
+          year: yr,
+          frameIdx: entries.filter(e => e.year === yr).length,
+          date: d.toISOString().slice(0, 10),
+          isForecast: false,
+        });
+      }
+      d = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
+    }
+    return entries;
   })();
 
-  const weeks = globeData?.header.weeks ?? 53;
-  function threshPct(temp_c: number): number {
-    return Math.max(0, Math.min(100, (temp_c - TEMP_MIN) / TEMP_RANGE * 100));
-  }
+  const forecastEntries: TimelineEntry[] = forecastManifest
+    ? forecastManifest.files.map((f, i) => ({
+        year: FORECAST_YEAR,
+        frameIdx: i,
+        date: f.date,
+        isForecast: true,
+      }))
+    : [];
+
+  const timelineEntries = [...historicalEntries, ...forecastEntries];
+
+  // Current timeline position
+  const [timelinePos, setTimelinePos] = useState<number>(() => {
+    // Default to last historical entry
+    return Math.max(0, historicalEntries.length - 1);
+  });
+
+  // When timelinePos changes, update selectedYear + frameIdx
+  useEffect(() => {
+    const entry = timelineEntries[timelinePos];
+    if (!entry) return;
+    if (entry.isForecast) {
+      if (selectedYear !== FORECAST_YEAR) {
+        forecastCache.current.clear();
+        setSelectedYear(FORECAST_YEAR);
+      }
+      frameIdxRef.current = 0;
+      setFrameIdx(0);
+      setForecastDayIdx(entry.frameIdx);
+    } else {
+      if (selectedYear !== entry.year) {
+        setPlaying(false);
+        setSelectedYear(entry.year as number);
+      }
+      frameIdxRef.current = entry.frameIdx;
+      setFrameIdx(entry.frameIdx);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timelinePos]);
+
+  // Sync timelinePos when year/frame changes externally (e.g. playback)
+  useEffect(() => {
+    if (selectedYear === FORECAST_YEAR) return;
+    const idx = timelineEntries.findIndex(e => e.year === selectedYear && e.frameIdx === frameIdx);
+    if (idx >= 0 && idx !== timelinePos) setTimelinePos(idx);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameIdx, selectedYear]);
+
+  // Current display date string
+  const currentDateStr = (() => {
+    const entry = timelineEntries[timelinePos];
+    if (!entry) return '';
+    const d = new Date(entry.date + 'T00:00:00Z');
+    const mon = MONTH_LABELS[d.getUTCMonth()].toUpperCase();
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const yr = d.getUTCFullYear();
+    return entry.isForecast ? `${mon} ${day} · FCST` : `${mon} ${day} · ${yr}`;
+  })();
+
+  // Timeline drag logic
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+
+  const posFromEvent = useCallback((clientX: number): number => {
+    const el = timelineRef.current;
+    if (!el || timelineEntries.length === 0) return timelinePos;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return Math.round(pct * (timelineEntries.length - 1));
+  }, [timelineEntries.length, timelinePos]);
+
+  const handleTimelinePointerDown = useCallback((e: React.PointerEvent) => {
+    isDragging.current = true;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setTimelinePos(posFromEvent(e.clientX));
+    setPlaying(false);
+  }, [posFromEvent]);
+
+  const handleTimelinePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging.current) return;
+    setTimelinePos(posFromEvent(e.clientX));
+  }, [posFromEvent]);
+
+  const handleTimelinePointerUp = useCallback(() => {
+    isDragging.current = false;
+  }, []);
+
+  // Build tick mark positions for years and months
+  const timelineTicks = (() => {
+    const ticks: { pct: number; label: string; isMajor: boolean }[] = [];
+    const total = timelineEntries.length;
+    if (total === 0) return ticks;
+    timelineEntries.forEach((entry, i) => {
+      const d = new Date(entry.date + 'T00:00:00Z');
+      const pct = i / (total - 1) * 100;
+      // Year tick at Jan 1 (or first entry of year)
+      const prevEntry = i > 0 ? timelineEntries[i - 1] : null;
+      const isNewYear = !prevEntry || new Date(prevEntry.date + 'T00:00:00Z').getUTCFullYear() !== d.getUTCFullYear();
+      const isNewMonth = !prevEntry || new Date(prevEntry.date + 'T00:00:00Z').getUTCMonth() !== d.getUTCMonth();
+      if (isNewYear) {
+        ticks.push({ pct, label: String(d.getUTCFullYear()), isMajor: true });
+      } else if (isNewMonth && !entry.isForecast) {
+        ticks.push({ pct, label: '', isMajor: false });
+      }
+    });
+    return ticks;
+  })();
+
+  // Scrub handle position %
+  const handlePct = timelineEntries.length > 1
+    ? timelinePos / (timelineEntries.length - 1) * 100
+    : 0;
 
   const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio, 2) : 1;
   const initW = typeof window !== 'undefined' ? window.innerWidth : 800;
@@ -1035,94 +1169,81 @@ export default function GlobeApp() {
 
       {!loading && !error && globeData && (
         <div ref={uiRef} className="globe-ui">
-          <div className="globe-hud-title">
-            <div className="globe-eyebrow">ERA5 · 2020–2026</div>
-            <div className="globe-title">Soil Temperature</div>
+
+          {/* Top-left: threshold chips */}
+          <div className="globe-thresh-panel">
+            {THRESHOLDS.map(t => (
+              <button key={t.id}
+                className={`globe-thresh-chip ${activeIds.has(t.id) ? 'on' : ''}`}
+                style={{ '--chip-color': t.color } as React.CSSProperties}
+                onClick={() => toggleThreshold(t.id)}
+                title={t.description}
+              >
+                <span className="chip-dot" />
+                <span className="chip-label">{t.label}</span>
+              </button>
+            ))}
           </div>
 
-          <div className="globe-hud-date">
-            {selectedYear === FORECAST_YEAR && <div className="globe-live-badge">● FORECAST</div>}
-            <div className="globe-date-label">
-              {selectedYear === FORECAST_YEAR && forecastManifest
-                ? (() => { const d = new Date(forecastManifest.files[forecastDayIdx]?.date + 'T00:00:00Z'); return `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`; })()
-                : dateLabel}
+          {/* Top-right: compact legend + forecast badge */}
+          <div className="globe-legend-compact">
+            {selectedYear === FORECAST_YEAR && (
+              <div className="globe-forecast-badge">● FCST</div>
+            )}
+            <div className="globe-legend-bar-v" />
+            <div className="globe-legend-labels-v">
+              <span>+50°C</span>
+              <span>0°C</span>
+              <span>−55°C</span>
             </div>
-            {selectedYear === FORECAST_YEAR && forecastManifest
-              ? <div className="globe-week-label">Day {forecastDayIdx + 1} of {forecastManifest.days} · Open-Meteo · updated nightly</div>
-              : <div className="globe-week-label">Week {frameIdx + 1} of {weeks}</div>}
           </div>
 
-          <div className="globe-controls">
-            <div className="globe-year-selector">
-              {AVAILABLE_YEARS.map(y => (
-                <button key={y}
-                  className={`globe-year-btn ${y === selectedYear ? 'active' : ''} ${yearStatus[String(y)] === 'error' ? 'unavailable' : ''}`}
-                  onClick={() => { setPlaying(false); setSelectedYear(y); }}
-                  disabled={yearStatus[String(y)] === 'loading'}
-                >{y}</button>
-              ))}
-              <button
-                className={`globe-year-btn globe-live-btn ${selectedYear === FORECAST_YEAR ? 'active' : ''} ${yearStatus['forecast'] === 'error' ? 'unavailable' : ''}`}
-                onClick={() => { setPlaying(false); forecastCache.current.clear(); setSelectedYear(FORECAST_YEAR); }}
-                disabled={yearStatus['forecast'] === 'loading'}
-                title={yearStatus['forecast'] === 'error' ? 'Forecast not yet available — check back after 2am UTC' : 'View 7-day forecast'}
-              >FORECAST</button>
-            </div>
-            {selectedYear === FORECAST_YEAR && forecastManifest ? (
-              <div className="globe-playback-row">
-                <div className="globe-forecast-days">
-                  {forecastManifest.files.map((f, i) => {
-                    const d = new Date(f.date + 'T00:00:00Z');
-                    const label = i === 0 ? 'Today' : `${MONTH_LABELS[d.getUTCMonth()]} ${d.getUTCDate()}`;
-                    return (
-                      <button key={i}
-                        className={`globe-forecast-day-btn ${i === forecastDayIdx ? 'active' : ''}`}
-                        onClick={() => setForecastDayIdx(i)}
-                      >{label}</button>
-                    );
-                  })}
+          {/* Bottom: timeline scrubber */}
+          <div className="globe-timeline-wrap">
+            <div
+              className="globe-timeline"
+              ref={timelineRef}
+              onPointerDown={handleTimelinePointerDown}
+              onPointerMove={handleTimelinePointerMove}
+              onPointerUp={handleTimelinePointerUp}
+              onPointerCancel={handleTimelinePointerUp}
+            >
+              {/* Track */}
+              <div className="globe-tl-track">
+                {/* Forecast zone highlight */}
+                {forecastEntries.length > 0 && (
+                  <div className="globe-tl-forecast-zone" style={{
+                    left: `${historicalEntries.length / (timelineEntries.length - 1) * 100}%`,
+                    width: `${forecastEntries.length / (timelineEntries.length - 1) * 100}%`,
+                  }} />
+                )}
+
+                {/* Tick marks */}
+                {timelineTicks.map((tick, i) => (
+                  <div key={i}
+                    className={`globe-tl-tick ${tick.isMajor ? 'major' : 'minor'}`}
+                    style={{ left: `${tick.pct}%` }}
+                  >
+                    {tick.isMajor && <span className="globe-tl-year">{tick.label}</span>}
+                  </div>
+                ))}
+
+                {/* Forecast label */}
+                {forecastEntries.length > 0 && (
+                  <div className="globe-tl-fcst-label" style={{
+                    left: `${(historicalEntries.length + forecastEntries.length / 2) / (timelineEntries.length - 1) * 100}%`,
+                  }}>FORECAST</div>
+                )}
+
+                {/* Scrub handle */}
+                <div className="globe-tl-handle" style={{ left: `${handlePct}%` }}>
+                  <div className="globe-tl-line" />
+                  <div className={`globe-tl-diamond ${yearStatus[String(selectedYear)] === 'loading' ? 'loading' : ''}`} />
+                  <div className="globe-tl-date">{currentDateStr}</div>
                 </div>
               </div>
-            ) : (
-              <div className="globe-playback-row">
-                <button className="globe-play-btn" onClick={() => setPlaying(p => !p)}>{playing ? '⏸' : '▶'}</button>
-                <input type="range" min={0} max={weeks - 1} value={frameIdx}
-                  onChange={e => { setPlaying(false); setFrameIdx(Number(e.target.value)); }}
-                  className="globe-scrubber" />
-              </div>
-            )}
-          </div>
-
-          <div className="globe-legend-panel">
-            <div className="globe-legend-title">Soil temperature</div>
-            <div className="globe-legend-wrap">
-              <div className="globe-legend-bar" />
-              {THRESHOLDS.map(t => (
-                <div key={t.id}
-                  className={`globe-thresh-tick ${activeIds.has(t.id) ? 'active' : ''}`}
-                  style={{ left: `${threshPct(t.temp_c)}%`, borderColor: t.color }}
-                />
-              ))}
-            </div>
-            <div className="globe-legend-labels">
-              <span>−55°C</span><span>0°C</span><span>+50°C</span>
-            </div>
-            <div className="globe-thresh-chips">
-              {THRESHOLDS.map(t => (
-                <button key={t.id}
-                  className={`globe-thresh-chip ${activeIds.has(t.id) ? 'on' : ''}`}
-                  style={{ '--chip-color': t.color } as React.CSSProperties}
-                  onClick={() => toggleThreshold(t.id)}
-                  title={t.description}
-                >
-                  <span className="chip-dot" />
-                  {t.label}
-                </button>
-              ))}
             </div>
           </div>
-
-          <div className="globe-tip">Drag to rotate · scroll to zoom</div>
         </div>
       )}
       {tooltip && (
