@@ -994,9 +994,26 @@ export default function GlobeApp() {
   useEffect(() => {
     const canvas = rendererRef.current?.domElement;
     if (!canvas) return;
-    const stop = () => { if (controlsRef.current) controlsRef.current.autoRotate = false; };
-    canvas.addEventListener('pointerdown', stop);
-    return () => canvas.removeEventListener('pointerdown', stop);
+    // Pause auto-rotate while user is dragging, resume 2s after they release
+    let resumeTimer: ReturnType<typeof setTimeout>;
+    const onDown = () => {
+      clearTimeout(resumeTimer);
+      if (controlsRef.current) controlsRef.current.autoRotate = false;
+    };
+    const onUp = () => {
+      resumeTimer = setTimeout(() => {
+        if (controlsRef.current) controlsRef.current.autoRotate = true;
+      }, 2000);
+    };
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onUp);
+    return () => {
+      clearTimeout(resumeTimer);
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onUp);
+    };
   }, [sceneReady]);
 
   // Block OrbitControls from UI overlay
