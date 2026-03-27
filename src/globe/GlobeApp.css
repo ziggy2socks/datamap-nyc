@@ -40,19 +40,19 @@
   position: absolute;
   pointer-events: none;
   z-index: 20;
-  background: var(--paper);
-  border: 1px solid var(--ink);
-  padding: 6px 10px;
+  background: #0a0a0a;
+  border: none;
+  padding: 7px 11px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
-  color: var(--ink);
+  color: #ffffff;
   white-space: nowrap;
   transform: translate(14px, -50%);
 }
-.globe-tooltip-coord { color: var(--ink-mid); margin-bottom: 2px; }
-.globe-tooltip-temp { font-size: 13px; font-weight: 400; letter-spacing: 0.02em; }
-.globe-tooltip-label { color: var(--ink-faint); font-size: 9px; margin-top: 2px; }
+.globe-tooltip-coord { color: rgba(255,255,255,0.55); margin-bottom: 3px; font-size: 9px; letter-spacing: 0.1em; }
+.globe-tooltip-temp { font-size: 13px; font-weight: 400; letter-spacing: 0.02em; color: #fff; }
+.globe-tooltip-label { color: rgba(255,255,255,0.4); font-size: 9px; margin-top: 2px; }
 
 /* ── Vignette ─────────────────────────────────────────────────────────────── */
 .globe-vignette {
@@ -198,19 +198,50 @@
 .globe-timeline-wrap {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  height: var(--tl-h);
-  background: rgba(237,236,234,0.95);
+  background: rgba(237,236,234,0.97);
   border-top: 1px solid var(--rule);
   pointer-events: auto;
   backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
 }
+
+/* Playback controls row */
+.globe-tl-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 16px 0;
+}
+
+.globe-tl-btn {
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--ink-mid);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background 0.1s, color 0.1s;
+}
+.globe-tl-btn:hover { background: rgba(0,0,0,0.06); color: var(--ink); }
+.globe-tl-now-btn {
+  margin-left: 6px;
+  border-color: var(--red-dim);
+  color: var(--red);
+  letter-spacing: 0.12em;
+}
+.globe-tl-now-btn:hover { background: rgba(217,48,48,0.06); }
 
 .globe-timeline {
   position: relative;
-  width: 100%; height: 100%;
+  width: 100%;
+  height: var(--tl-h);
   cursor: ew-resize;
   touch-action: none;
-  padding: 0 32px;
+  padding: 0 48px;   /* extra padding so first/last entries are reachable */
   display: flex; align-items: center;
 }
 

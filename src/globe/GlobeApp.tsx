@@ -1084,14 +1084,15 @@ export default function GlobeApp() {
     return entry.isForecast ? `${mon} ${day} · FCST` : `${mon} ${day} · ${yr}`;
   })();
 
-  // Timeline drag logic
-  const timelineRef = useRef<HTMLDivElement>(null);
+  // Timeline drag logic — use track ref (not wrapper) for accurate hit testing
+  const timelineRef = useRef<HTMLDivElement>(null); // outer wrapper (for pointer capture)
+  const trackRef = useRef<HTMLDivElement>(null);     // inner track (for position math)
   const isDragging = useRef(false);
 
   const posFromEvent = useCallback((clientX: number): number => {
-    const el = timelineRef.current;
-    if (!el || timelineEntries.length === 0) return timelinePos;
-    const rect = el.getBoundingClientRect();
+    const track = trackRef.current;
+    if (!track || timelineEntries.length === 0) return timelinePos;
+    const rect = track.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     return Math.round(pct * (timelineEntries.length - 1));
   }, [timelineEntries.length, timelinePos]);
@@ -1111,6 +1112,23 @@ export default function GlobeApp() {
   const handleTimelinePointerUp = useCallback(() => {
     isDragging.current = false;
   }, []);
+
+  // Playback controls
+  const stepBack = useCallback(() => {
+    setPlaying(false);
+    setTimelinePos(p => Math.max(0, p - 1));
+  }, []);
+
+  const stepForward = useCallback(() => {
+    setPlaying(false);
+    setTimelinePos(p => Math.min(timelineEntries.length - 1, p + 1));
+  }, [timelineEntries.length]);
+
+  const jumpToLatest = useCallback(() => {
+    setPlaying(false);
+    // Jump to last historical entry (most recent ERA5 data)
+    setTimelinePos(historicalEntries.length - 1);
+  }, [historicalEntries.length]);
 
   // Build tick mark positions for years and months
   const timelineTicks = (() => {
@@ -1210,6 +1228,16 @@ export default function GlobeApp() {
 
           {/* Bottom: timeline scrubber */}
           <div className="globe-timeline-wrap">
+            {/* Playback controls */}
+            <div className="globe-tl-controls">
+              <button className="globe-tl-btn" onClick={stepBack} title="Step back">‹</button>
+              <button className="globe-tl-btn" onClick={() => setPlaying(p => !p)} title={playing ? 'Pause' : 'Play'}>
+                {playing ? '▐▐' : '▶'}
+              </button>
+              <button className="globe-tl-btn" onClick={stepForward} title="Step forward">›</button>
+              <button className="globe-tl-btn globe-tl-now-btn" onClick={jumpToLatest} title="Jump to latest data">NOW</button>
+            </div>
+
             <div
               className="globe-timeline"
               ref={timelineRef}
@@ -1219,7 +1247,7 @@ export default function GlobeApp() {
               onPointerCancel={handleTimelinePointerUp}
             >
               {/* Track */}
-              <div className="globe-tl-track">
+              <div className="globe-tl-track" ref={trackRef}>
                 {/* Forecast zone highlight */}
                 {forecastEntries.length > 0 && (
                   <div className="globe-tl-forecast-zone" style={{
@@ -1259,15 +1287,14 @@ export default function GlobeApp() {
       {tooltip && (
         <div className="globe-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
           <div className="globe-tooltip-coord">
-            {Math.abs(tooltip.lat).toFixed(1)}°{tooltip.lat >= 0 ? 'N' : 'S'} &nbsp;
+            {Math.abs(tooltip.lat).toFixed(1)}°{tooltip.lat >= 0 ? 'N' : 'S'}&thinsp;
             {Math.abs(tooltip.lon).toFixed(1)}°{tooltip.lon >= 0 ? 'E' : 'W'}
           </div>
           {tooltip.temp !== null ? (
             <>
               <div className="globe-tooltip-temp">
-                {tooltip.temp.toFixed(1)}°C &nbsp; {(tooltip.temp * 9/5 + 32).toFixed(1)}°F
+                {tooltip.temp.toFixed(1)}°C · {(tooltip.temp * 9/5 + 32).toFixed(1)}°F
               </div>
-              <div className="globe-tooltip-label">soil temp · 0–7cm</div>
             </>
           ) : (
             <div className="globe-tooltip-label">ocean</div>
