@@ -10,6 +10,7 @@
     { "source": "/dzi/:path*",         "destination": "https://isometric-nyc-tiles.cannoneyed.com/dzi/:path*" },
     { "source": "/api/adsb/:path*",    "destination": "https://api.adsb.lol/v2/:path*" },
     { "source": "/api/mta-f",          "destination": "/api/mta-f.js" },
+    { "source": "/api/nyc311",         "destination": "/api/nyc311.js" },
     { "source": "/live",               "destination": "/index.html" },
     { "source": "/311",                "destination": "/index.html" },
     { "source": "/suitability",        "destination": "/index.html" },
