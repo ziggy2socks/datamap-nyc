@@ -1108,8 +1108,8 @@ export default function GlobeApp() {
       setForecastDayIdx(entry.frameIdx);
     } else {
       if (selectedYear !== entry.year) {
-        setPlaying(false);
         setSelectedYear(entry.year as number);
+        // Don't pause — playback continues while new year loads in background
       }
       frameIdxRef.current = entry.frameIdx;
       setFrameIdx(entry.frameIdx);
