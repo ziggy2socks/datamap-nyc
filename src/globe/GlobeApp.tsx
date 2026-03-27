@@ -576,14 +576,24 @@ export default function GlobeApp() {
       });
   }, [selectedYear]);
 
-  // ── Forecast: load a specific day when scrubber moves ─────────────────────
+  // ── Forecast: load a specific day when forecastDayIdx changes ───────────────
+  // Triggered directly by timeline scrub into forecast zone — no selectedYear dep.
   useEffect(() => {
-    if (selectedYear !== FORECAST_YEAR || !forecastManifest) return;
+    if (!forecastManifest) return;
     const d = forecastDayIdx;
+    const makeHeader = (): GlobeHeader => ({
+      year: new Date().getFullYear(),
+      width: 720, height: 360, weeks: forecastManifest.days,
+      temp_min: -55, temp_max: 50,
+      ocean_sentinel: OCEAN_SENTINEL,
+      dates: forecastManifest.files.map(f => f.date),
+    });
+
     if (forecastCache.current.has(d)) {
       const cached = forecastCache.current.get(d)!;
       frameIdxRef.current = 0;
       setFrameIdx(0);
+      coastlineRef.current = null;
       setGlobeData(cached);
       return;
     }
@@ -591,21 +601,17 @@ export default function GlobeApp() {
     if (!fileEntry) return;
 
     loadForecastDay(fileEntry.url).then(({ pixels }) => {
-      const header: GlobeHeader = {
-        year: new Date().getFullYear(),
-        width: 720, height: 360, weeks: forecastManifest.days,
-        temp_min: -55, temp_max: 50,
-        ocean_sentinel: OCEAN_SENTINEL,
-        dates: forecastManifest.files.map(f => f.date),
-      };
+      const header = makeHeader();
       const fullPixels = new Uint8Array(720 * 360);
       fullPixels.set(pixels);
-      forecastCache.current.set(d, { header, pixels: fullPixels });
+      const data = { header, pixels: fullPixels };
+      forecastCache.current.set(d, data);
       frameIdxRef.current = 0;
       setFrameIdx(0);
-      setGlobeData({ header, pixels: fullPixels });
-    }).catch(() => {/* silently skip failed day */});
-  }, [forecastDayIdx, forecastManifest, selectedYear]);
+      coastlineRef.current = null;
+      setGlobeData(data);
+    }).catch(() => {/* silently skip */});
+  }, [forecastDayIdx, forecastManifest]);
 
   // ── Load binary for selected year ─────────────────────────────────────────
   useEffect(() => {
@@ -646,9 +652,16 @@ export default function GlobeApp() {
         const pixels = new Uint8Array(buf, 4 + headerLen);
         const data = { header, pixels };
         yearCache.current.set(selectedYear as number, data);
-            coastlineRef.current = null; // reset so it rebuilds for new year
+        coastlineRef.current = null;
         setGlobeData(data);
-        setFrameIdx(0);
+        // After load, jump to the frame the timeline was pointing to
+        // Find what frameIdx corresponds to current timelinePos
+        const tlEntry = timelineEntriesRef.current[timelinePosRef.current];
+        const targetFrame = (tlEntry && tlEntry.year === selectedYear)
+          ? Math.min(tlEntry.frameIdx, (data.header.weeks ?? 1) - 1)
+          : 0;
+        frameIdxRef.current = targetFrame;
+        setFrameIdx(targetFrame);
         setLoading(false);
         setYearStatus(s => ({ ...s, [selectedYear]: 'ready' }));
       })
@@ -906,15 +919,22 @@ export default function GlobeApp() {
     contourCache.current.frameIdx = -1;
   }, [globeData, frameIdx, sceneReady]);
 
-  // ── Playback ───────────────────────────────────────────────────────────────
+  // ── Playback — advance timelinePos, not just frameIdx within one year ──────
+  const timelinePosRef = useRef(0);
+  const timelineEntriesRef = useRef<TimelineEntry[]>([]);
+
   useEffect(() => {
-    if (!playing || !globeData) return;
+    if (!playing) return;
     const iv = setInterval(() => {
-      const next = (frameIdxRef.current + 1) % globeData.header.weeks;
-      frameIdxRef.current = next; setFrameIdx(next);
-    }, 200);
+      setTimelinePos(p => {
+        const total = timelineEntriesRef.current.length;
+        const next = p + 1;
+        if (next >= total) { setPlaying(false); return p; }
+        return next;
+      });
+    }, 180);
     return () => clearInterval(iv);
-  }, [playing, globeData]);
+  }, [playing]);
 
   // Mouse move → raycast → tooltip
   useEffect(() => {
@@ -1045,12 +1065,16 @@ export default function GlobeApp() {
     : [];
 
   const timelineEntries = [...historicalEntries, ...forecastEntries];
+  // Keep refs in sync for use inside effects that close over stale values
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { timelineEntriesRef.current = timelineEntries; }, [timelineEntries]);
 
   // Current timeline position
   const [timelinePos, setTimelinePos] = useState<number>(() => {
     // Default to last historical entry
     return Math.max(0, historicalEntries.length - 1);
   });
+  useEffect(() => { timelinePosRef.current = timelinePos; }, [timelinePos]);
 
   // When timelinePos changes, update selectedYear + frameIdx
   useEffect(() => {
