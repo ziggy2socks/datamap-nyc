@@ -44,10 +44,11 @@ function getColor(type: string): string {
 
 export async function fetch311Recent(): Promise<Complaint311[]> {
   try {
-    // Socrata needs 'YYYY-MM-DDTHH:MM:SS' — no trailing Z, no milliseconds
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    // Socrata: no trailing Z, no ms. 311 data lags ~26h so use 48h window.
+    // Filter latitude IS NOT NULL in query to avoid records with no coordinates.
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000)
       .toISOString().slice(0, 19);
-    const url = `/api/311?$where=created_date>'${since}'&$limit=500&$order=created_date DESC&$select=unique_key,complaint_type,created_date,latitude,longitude`;
+    const url = `/api/311?$where=created_date>'${since}' AND latitude IS NOT NULL&$limit=500&$order=created_date DESC&$select=unique_key,complaint_type,created_date,latitude,longitude`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return [];
     const data: Record<string, string>[] = await res.json();

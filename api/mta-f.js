@@ -159,9 +159,15 @@ function parseFeedMessage(buf) {
 export default async function handler(req) {
   try {
     // MTA GTFS-RT BDFM feed (includes F train) — no API key required
+    // Must send a browser-like User-Agent; MTA blocks server-side UAs
     const mtaRes = await fetch(
       'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm',
-      { headers: { 'Accept': 'application/x-protobuf' } }
+      {
+        headers: {
+          'Accept': 'application/x-protobuf, */*',
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        },
+      }
     );
 
     if (!mtaRes.ok) {
