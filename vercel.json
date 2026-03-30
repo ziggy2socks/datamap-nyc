@@ -28,6 +28,10 @@
       "destination": "https://api.adsb.lol/v2/:path*"
     },
     {
+      "source": "/assets/:path*",
+      "destination": "/assets/:path*"
+    },
+    {
       "source": "/data/:path*",
       "destination": "/data/:path*"
     },
