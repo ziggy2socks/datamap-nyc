@@ -1,7 +1,7 @@
 /**
- * LiveApp — /live route
+ * LiveApp — /live route — v2
  * Real-time city feed on the isometric NYC map.
- * Layers: aircraft (ADS-B), F train (shape-following), 311/24h, weather radar (stub)
+ * Layers: aircraft, F train (shape-following), 311/48h, permits, cranes, weather radar (stub)
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import OpenSeadragon from 'openseadragon';
