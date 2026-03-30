@@ -74,11 +74,12 @@ function interpolateShape(
   endIdx: number,
   t: number
 ): { lat: number; lon: number; heading: number } {
+  const last = shape.length - 1;
   const from = Math.min(startIdx, endIdx);
   const to   = Math.max(startIdx, endIdx);
-  // Clamp indices
-  const i0 = Math.max(0, Math.min(from, shape.length - 1));
-  const i1 = Math.max(0, Math.min(to,   shape.length - 1));
+  // Clamp indices — shape is 0-indexed (0..length-1)
+  const i0 = Math.max(0, Math.min(from, last));
+  const i1 = Math.max(0, Math.min(to,   last));
 
   if (i0 === i1) {
     return { lat: shape[i0][0], lon: shape[i0][1], heading: 0 };
@@ -161,8 +162,8 @@ export async function computeFTrainPositions(
 
     let vpX: number, vpY: number, heading: number;
 
-    if (v.status === 1) {
-      // STOPPED_AT: place exactly at stop
+    if (v.status === 1 || currentIdx <= 0 || currentIdx >= shape.length - 1) {
+      // STOPPED_AT or terminal stop: place exactly at stop lat/lon
       const pos = toVp(currentStop.lat, currentStop.lon);
       vpX = pos.x; vpY = pos.y; heading = 0;
     } else {
