@@ -44,8 +44,8 @@ function getColor(type: string): string {
 
 export async function fetch311Recent(): Promise<Complaint311[]> {
   try {
-    // Use edge function proxy — Vercel rewrites mangle Socrata's $where params
-    const url = `/api/nyc311`;
+    // CF Worker proxy — handles Socrata $where params correctly
+    const url = `https://mta-proxy.zig191476.workers.dev/311`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return [];
     const data: Record<string, string>[] = await res.json();

@@ -10,6 +10,7 @@ import { fetchAircraft, type AircraftState, type AircraftKind } from './sources/
 import { fetchSubwayTrains, type SubwayTrain, SUBWAY_COLORS } from './sources/subway';
 import { fetch311Recent, type Complaint311 } from './sources/recent311';
 import { fetchFTrains, type FTrain, F_COLOR, POLL_MS as F_POLL_MS } from './sources/fLine';
+import { fetchLivePermits, type LivePermit, jobColor } from './sources/livePermits';
 import './LiveApp.css';
 
 // ── OSD tile config (identical to IsoView) ────────────────────
@@ -60,6 +61,8 @@ interface LayerState {
   fTrain: boolean;
   subway: boolean;
   complaints: boolean;
+  permits: boolean;
+  cranes: boolean;
   radar: boolean;
 }
 
@@ -102,13 +105,14 @@ export default function LiveApp() {
 
   // Layer visibility
   const [layers, setLayers] = useState<LayerState>({
-    aircraft: true, fTrain: true, subway: true, complaints: true, radar: false,
+    aircraft: true, fTrain: true, subway: true,
+    complaints: true, permits: true, cranes: true, radar: false,
   });
   const layersRef = useRef(layers);
   useEffect(() => { layersRef.current = layers; }, [layers]);
 
   // Live counts
-  const [counts, setCounts] = useState({ aircraft: 0, fTrain: 0, subway: 0, complaints: 0 });
+  const [counts, setCounts] = useState({ aircraft: 0, fTrain: 0, subway: 0, complaints: 0, permits: 0, cranes: 0 });
 
   // Tooltip
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -138,6 +142,10 @@ export default function LiveApp() {
   // ── 311 overlay state ─────────────────────────────────────
   const c311OverlaysRef = useRef<Map<string, HTMLElement>>(new Map());
   const c311DataRef     = useRef<Complaint311[]>([]);
+
+  // ── Permits/cranes overlay state ──────────────────────────
+  const permitOverlaysRef = useRef<Map<string, HTMLElement>>(new Map());
+  const permitDataRef     = useRef<LivePermit[]>([]);
 
   // ── OSD init ──────────────────────────────────────────────
   useEffect(() => {
@@ -625,6 +633,100 @@ export default function LiveApp() {
     }
   }, [layers.complaints]);
 
+  // ── Permits + cranes rendering ────────────────────────────
+  const placePermits = useCallback((permits: LivePermit[], showPermits: boolean, showCranes: boolean) => {
+    const viewer = osdRef.current;
+    if (!viewer) return;
+    const existing = permitOverlaysRef.current;
+    const seen = new Set<string>();
+
+    for (const p of permits) {
+      const visible = p.isCrane ? showCranes : showPermits;
+      seen.add(p.id);
+
+      if (!visible) {
+        // If toggled off, remove if exists
+        const el = existing.get(p.id);
+        if (el) { try { viewer.removeOverlay(el); } catch { /* ignore */ } existing.delete(p.id); }
+        continue;
+      }
+
+      if (existing.has(p.id)) continue;
+
+      const { x: vpX, y: vpY } = toVp(p.lat, p.lon);
+      const el = document.createElement('div');
+
+      if (p.isCrane) {
+        // Crane: yellow diamond marker with 🏗️ emoji
+        el.style.cssText = `width:14px;height:14px;pointer-events:auto;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;`;
+        el.innerHTML = '🏗️';
+        el.title = p.address;
+      } else {
+        // Permit: small colored square
+        const color = jobColor(p.jobType);
+        el.style.cssText = `width:7px;height:7px;background:${color};opacity:0.75;border-radius:1px;pointer-events:auto;cursor:pointer;`;
+      }
+
+      el.addEventListener('mouseenter', (e: MouseEvent) => {
+        e.stopImmediatePropagation();
+        const age = Math.round((Date.now() - new Date(p.issuedDate).getTime()) / 3600000);
+        setTooltip({
+          lines: [
+            p.isCrane ? '🏗️ Crane / Hoist Permit' : `${p.jobType} Permit`,
+            p.address,
+            age < 1 ? 'Just filed' : `${age}h ago`,
+          ],
+          x: e.clientX + 10, y: e.clientY - 10,
+        });
+      });
+      el.addEventListener('mousemove', (e: MouseEvent) => {
+        e.stopImmediatePropagation();
+        setTooltip(prev => prev ? { ...prev, x: e.clientX + 10, y: e.clientY - 10 } : null);
+      });
+      el.addEventListener('mouseleave', (e: MouseEvent) => {
+        e.stopImmediatePropagation(); setTooltip(null);
+      });
+      el.addEventListener('pointerdown', (e: PointerEvent) => e.stopImmediatePropagation());
+
+      viewer.addOverlay({
+        element: el,
+        location: new OpenSeadragon.Point(vpX, vpY),
+        placement: OpenSeadragon.Placement.CENTER,
+      });
+      existing.set(p.id, el);
+    }
+
+    // Remove dropped permits
+    for (const [id, el] of existing) {
+      if (!seen.has(id)) {
+        try { viewer.removeOverlay(el); } catch { /* ignore */ }
+        existing.delete(id);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const data = await fetchLivePermits();
+        permitDataRef.current = data;
+        const cranes = data.filter(p => p.isCrane);
+        const permits = data.filter(p => !p.isCrane);
+        setCounts(prev => ({ ...prev, permits: permits.length, cranes: cranes.length }));
+        if (dziLoaded) placePermits(data, layersRef.current.permits, layersRef.current.cranes);
+      } catch { /* silent */ }
+    };
+    if (dziLoaded) poll();
+    const iv = setInterval(poll, 10 * 60 * 1000); // refresh every 10 min
+    return () => clearInterval(iv);
+  }, [dziLoaded, placePermits]);
+
+  useEffect(() => {
+    if (dziLoaded && permitDataRef.current.length > 0) {
+      placePermits(permitDataRef.current, layers.permits, layers.cranes);
+    }
+  }, [dziLoaded, layers.permits, layers.cranes, placePermits]);
+
   // ── Toggle layer ─────────────────────────────────────────
   const toggleLayer = (key: keyof LayerState) => {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -635,7 +737,9 @@ export default function LiveApp() {
     { key: 'aircraft',   label: 'Aircraft',    color: '#c0d8ff', countKey: 'aircraft' },
     { key: 'fTrain',     label: 'F Train',     color: F_COLOR,   countKey: 'fTrain' },
     { key: 'subway',     label: 'Subway',      color: '#6CBE45', countKey: 'subway' },
-    { key: 'complaints', label: '311 / 24h',   color: '#F5A623', countKey: 'complaints' },
+    { key: 'complaints', label: '311 / 48h',   color: '#F5A623', countKey: 'complaints' },
+    { key: 'permits',    label: 'Permits',     color: '#60b8ff', countKey: 'permits' },
+    { key: 'cranes',     label: 'Cranes',      color: '#FFD700', countKey: 'cranes' },
     { key: 'radar',      label: 'Weather',     color: '#60d8a0' },
   ];
 

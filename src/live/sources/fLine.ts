@@ -208,7 +208,11 @@ export async function computeFTrainPositions(
 
 export async function fetchFTrains(): Promise<FTrain[]> {
   try {
-    const res = await fetch('/api/mta-f', { cache: 'no-store' });
+    // CF Worker proxy — bypasses MTA's Vercel IP block
+    const res = await fetch(
+      'https://mta-proxy.zig191476.workers.dev/subway?route=F',
+      { cache: 'no-store' }
+    );
     if (!res.ok) return [];
     const vehicles: MTAVehicle[] = await res.json();
     return computeFTrainPositions(vehicles);
