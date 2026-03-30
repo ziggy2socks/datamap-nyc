@@ -104,22 +104,21 @@ function interpolateShape(
 // ── Module state ──────────────────────────────────────────────
 
 let fLineData: FLineData | null = null;
-let loadingData = false;
+let fLinePromise: Promise<FLineData | null> | null = null;
 
 async function loadFLineData(): Promise<FLineData | null> {
   if (fLineData) return fLineData;
-  if (loadingData) return null;
-  loadingData = true;
-  try {
-    // Served from CF Worker — avoids Vercel SPA catch-all swallowing /data/*.json
-    const res = await fetch('https://mta-proxy.zig191476.workers.dev/f-line');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    fLineData = await res.json() as FLineData;
-    return fLineData;
-  } catch {
-    loadingData = false;
-    return null;
+  // Deduplicate concurrent requests with a shared promise
+  if (!fLinePromise) {
+    fLinePromise = fetch('https://mta-proxy.zig191476.workers.dev/f-line')
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<FLineData>;
+      })
+      .then(d => { fLineData = d; return d; })
+      .catch(() => { fLinePromise = null; return null; }); // reset on failure so next call retries
   }
+  return fLinePromise;
 }
 
 // Determine direction from trip_id convention:
