@@ -10,6 +10,7 @@
  */
 
 import { latlngToImagePx, IMAGE_DIMS } from '../../permits/coordinates';
+import { F_LINE_SHAPE_N, F_LINE_SHAPE_S, F_LINE_STOPS } from './fLineData';
 
 export const F_COLOR = '#FF6319';
 const POLL_MS = 15000;
@@ -101,25 +102,13 @@ function interpolateShape(
   return { lat, lon, heading: hdg };
 }
 
-// ── Module state ──────────────────────────────────────────────
+// ── Inlined geometry (no async load needed) ───────────────────
 
-let fLineData: FLineData | null = null;
-let fLinePromise: Promise<FLineData | null> | null = null;
-
-async function loadFLineData(): Promise<FLineData | null> {
-  if (fLineData) return fLineData;
-  // Deduplicate concurrent requests with a shared promise
-  if (!fLinePromise) {
-    fLinePromise = fetch('https://mta-proxy.zig191476.workers.dev/f-line')
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<FLineData>;
-      })
-      .then(d => { fLineData = d; return d; })
-      .catch(() => { fLinePromise = null; return null; }); // reset on failure so next call retries
-  }
-  return fLinePromise;
-}
+const STATIC_F_LINE: FLineData = {
+  shape_n: F_LINE_SHAPE_N,
+  shape_s: F_LINE_SHAPE_S,
+  stops: F_LINE_STOPS,
+};
 
 // Determine direction from trip_id convention:
 // MTA trip IDs contain direction: e.g. "AFA23GEN-F059-Weekday-00_000600_F..N07R"
@@ -137,8 +126,7 @@ export async function computeFTrainPositions(
   vehicles: MTAVehicle[],
   nowMs: number = Date.now()
 ): Promise<FTrain[]> {
-  const data = await loadFLineData();
-  if (!data) return [];
+  const data = STATIC_F_LINE;
 
   const trains: FTrain[] = [];
 
