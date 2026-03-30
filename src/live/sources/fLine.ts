@@ -110,7 +110,8 @@ async function loadFLineData(): Promise<FLineData | null> {
   if (loadingData) return null;
   loadingData = true;
   try {
-    const res = await fetch('/data/f_line.json');
+    // Served from CF Worker — avoids Vercel SPA catch-all swallowing /data/*.json
+    const res = await fetch('https://mta-proxy.zig191476.workers.dev/f-line');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     fLineData = await res.json() as FLineData;
     return fLineData;
