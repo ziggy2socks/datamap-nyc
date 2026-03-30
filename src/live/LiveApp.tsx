@@ -441,20 +441,31 @@ export default function LiveApp() {
     fTrainRafRef.current = requestAnimationFrame(animate);
   }, []);
 
+  // Cache latest train data so we can re-place when dziLoaded flips
+  const fTrainCacheRef = useRef<FTrain[]>([]);
+
   useEffect(() => {
     fTrainActiveRef.current = true;
     const poll = async () => {
       if (!fTrainActiveRef.current) return;
       try {
         const trains = await fetchFTrains();
+        fTrainCacheRef.current = trains;
         setCounts(prev => ({ ...prev, fTrain: trains.length }));
-        if (layersRef.current.fTrain) placeFTrains(trains);
+        if (layersRef.current.fTrain && dziLoaded) placeFTrains(trains);
       } catch { /* silent */ }
     };
-    if (dziLoaded) { poll(); }
+    poll(); // always poll for count; placement gated by dziLoaded above
     const iv = setInterval(poll, F_POLL_MS);
     return () => { fTrainActiveRef.current = false; clearInterval(iv); if (fTrainRafRef.current !== null) cancelAnimationFrame(fTrainRafRef.current); };
   }, [dziLoaded, placeFTrains]);
+
+  // Re-place cached trains when map becomes ready
+  useEffect(() => {
+    if (dziLoaded && fTrainCacheRef.current.length > 0 && layers.fTrain) {
+      placeFTrains(fTrainCacheRef.current);
+    }
+  }, [dziLoaded, layers.fTrain, placeFTrains]);
 
   useEffect(() => {
     if (!layers.fTrain) {
@@ -713,11 +724,12 @@ export default function LiveApp() {
         const cranes = data.filter(p => p.isCrane);
         const permits = data.filter(p => !p.isCrane);
         setCounts(prev => ({ ...prev, permits: permits.length, cranes: cranes.length }));
+        // Place immediately if map ready; otherwise the dziLoaded effect below handles it
         if (dziLoaded) placePermits(data, layersRef.current.permits, layersRef.current.cranes);
       } catch { /* silent */ }
     };
-    if (dziLoaded) poll();
-    const iv = setInterval(poll, 10 * 60 * 1000); // refresh every 10 min
+    poll(); // fetch counts regardless of map state
+    const iv = setInterval(poll, 10 * 60 * 1000);
     return () => clearInterval(iv);
   }, [dziLoaded, placePermits]);
 
