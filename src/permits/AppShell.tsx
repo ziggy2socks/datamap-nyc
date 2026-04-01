@@ -7,11 +7,13 @@ import { usePermits } from './PermitContext';
 import PermitSidebar from './PermitSidebar';
 import IsoView from './IsoView';
 import MapView from './MapView';
+import PermitCharts from './PermitCharts';
 import type { Permit } from './types';
 import { getJobColor, getJobLabel } from './permit-data';
 import { useAmbientSound } from '../useAmbientSound';
 import './PermitSidebar.css';
 import './AppShell.css';
+import './PermitCharts.css';
 
 export default function AppShell() {
   const { view } = usePermits();
@@ -43,9 +45,12 @@ export default function AppShell() {
         {mobileOpen ? '✕' : '☰'}
       </button>
       <div className="shell-view">
-        {view === 'iso'
-          ? <IsoView flyRef={isoFlyRef} />
-          : <MapView />}
+        {view === 'charts'
+          ? <PermitCharts />
+          : view === 'iso'
+            ? <IsoView flyRef={isoFlyRef} />
+            : <MapView />
+        }
         {started && (
           <button className="ambient-btn" onClick={toggleMute} title={muted ? 'Unmute' : 'Mute ambient sound'}>
             {muted

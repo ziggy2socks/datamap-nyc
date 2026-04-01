@@ -12,7 +12,7 @@ import { fetchPermits, searchPermits, ALL_JOB_TYPES, ALL_BOROUGHS, workTypeToCod
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ViewMode = 'iso' | 'map';
+export type ViewMode = 'iso' | 'map' | 'charts';
 
 export interface PermitFilters {
   dateFrom: string;

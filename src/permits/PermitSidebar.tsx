@@ -99,11 +99,23 @@ export default function PermitSidebar({ onSelectPermit, mobileOpen, onMobileClos
           <button
             className={`ps-view-btn${view === 'iso' ? ' active' : ''}`}
             onClick={() => setView('iso')}
-            title="Isometric view">ISO VIEW</button>
+            title="Isometric view">ISO</button>
           <button
             className={`ps-view-btn${view === 'map' ? ' active' : ''}`}
             onClick={() => setView('map')}
-            title="Map view">MAP VIEW</button>
+            title="Map view">MAP</button>
+          <button
+            className={`ps-view-btn${view === 'charts' ? ' active' : ''}`}
+            onClick={() => setView('charts')}
+            title="Analytics charts">
+            {/* Bar chart icon */}
+            <svg width="13" height="12" viewBox="0 0 13 12" fill="none" style={{verticalAlign:'middle',marginRight:4}}>
+              <rect x="0" y="6" width="3" height="6" fill="currentColor" opacity="0.8"/>
+              <rect x="4" y="3" width="3" height="9" fill="currentColor" opacity="0.8"/>
+              <rect x="8" y="0" width="3" height="12" fill="currentColor" opacity="0.8"/>
+              <rect x="12" y="4" width="1" height="8" fill="currentColor" opacity="0.3"/>
+            </svg>
+            CHARTS</button>
         </div>
         <div className="ps-count-row">
           {isLoading ? (
