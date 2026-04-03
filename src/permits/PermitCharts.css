@@ -9,7 +9,7 @@
   padding: 16px;
   gap: 12px;
   box-sizing: border-box;
-  overflow: auto;
+  overflow: hidden;
   font-family: 'Courier New', monospace;
 }
 
@@ -63,21 +63,22 @@
   color: #60a5fa;
 }
 
-/* Charts grid */
+/* Charts grid — scrollable if viewport too short */
 .pc-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: minmax(220px, 1.6fr) minmax(180px, 1fr);
   gap: 12px;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 /* Trend spans full width, top row */
 .pc-panel {
   border-radius: 8px;
   overflow: hidden;
-  min-height: 140px;
+  min-height: 0;
 }
 
 .pc-trend {
@@ -104,6 +105,7 @@
   .pc-grid {
     grid-template-columns: 1fr;
     grid-template-rows: repeat(4, 200px);
+    overflow-y: auto;
   }
 
   .pc-trend {
