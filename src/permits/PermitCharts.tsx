@@ -4,8 +4,9 @@
  * Four canvas-based charts:
  *   1. Monthly volume trend (2021→present) — stacked area by type
  *   2. Type breakdown — horizontal bar chart for current filter window
- *   3. Borough share — horizontal stacked bar, count by borough
- *   4. Top streets — ranked bar for most-active streets in current window
+ *   3. Top neighborhoods (NTA) — most active in current filter window
+ *   4. Estimated cost by type — total declared $ per permit type
+ *   5. Top owners/applicants — most active in current filter window
  *
  * Trend data is fetched independently (full 2021→present) via Socrata
  * aggregation query. Filter charts draw from allPermits in context.
@@ -15,13 +16,9 @@ import { usePermits } from './PermitContext';
 import { ALL_BOROUGHS, WORK_TYPE_LABELS, WORK_TYPE_COLORS } from './permit-data';
 
 // ── colour helpers ──────────────────────────────────────────────────────────
-const BOROUGH_COLORS: Record<string, string> = {
-  MANHATTAN:     '#60a5fa',
-  BROOKLYN:      '#34d399',
-  QUEENS:        '#f59e0b',
-  BRONX:         '#f87171',
-  'STATEN ISLAND':'#c084fc',
-};
+
+const ACCENT2 = '#34d399';
+const ACCENT3 = '#f59e0b';
 const TEXT_BRIGHT = 'rgba(255,255,255,0.88)';
 const TEXT_DIM    = 'rgba(255,255,255,0.42)';
 const GRID_LINE   = 'rgba(255,255,255,0.06)';
@@ -99,8 +96,9 @@ export default function PermitCharts() {
 
   const trendRef  = useRef<HTMLCanvasElement>(null);
   const typeRef   = useRef<HTMLCanvasElement>(null);
-  const boroughRef= useRef<HTMLCanvasElement>(null);
-  const streetRef = useRef<HTMLCanvasElement>(null);
+  const ntaRef    = useRef<HTMLCanvasElement>(null);
+  const costRef   = useRef<HTMLCanvasElement>(null);
+  const ownersRef = useRef<HTMLCanvasElement>(null);
 
   const [trendData,    setTrendData]    = useState<MonthBucket[]>([]);
   const [trendLoading, setTrendLoading] = useState(true);
@@ -299,9 +297,9 @@ export default function PermitCharts() {
     ctx.textAlign = 'left';
   }, [allPermits]);
 
-  // ── Chart 3: Borough share ───────────────────────────────────────────────
-  const drawBorough = useCallback(() => {
-    const canvas = boroughRef.current;
+  // ── Chart 3: Top neighborhoods (NTA) ───────────────────────────────────
+  const drawNTA = useCallback(() => {
+    const canvas = ntaRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -314,29 +312,114 @@ export default function PermitCharts() {
 
     ctx.fillStyle = TEXT_BRIGHT;
     ctx.font = `700 11px ${FONT}`;
-    ctx.fillText('PERMITS BY BOROUGH', 16, 20);
+    ctx.fillText('TOP NEIGHBORHOODS', 16, 20);
+    ctx.fillStyle = TEXT_DIM;
+    ctx.font = `400 10px ${FONT}`;
+    ctx.textAlign = 'right';
+    ctx.fillText('BY PERMIT COUNT', W - 16, 20);
+    ctx.textAlign = 'left';
 
     const counts: Record<string, number> = {};
     allPermits.forEach(p => {
-      const b = (p.borough ?? 'UNKNOWN').toUpperCase();
-      counts[b] = (counts[b] ?? 0) + 1;
+      const n = p.nta?.trim();
+      if (n) counts[n] = (counts[n] ?? 0) + 1;
     });
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    if (!sorted.length) return;
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    if (!sorted.length) {
+      ctx.fillStyle = TEXT_DIM;
+      ctx.font = `400 10px ${FONT}`;
+      ctx.fillText('NO NEIGHBORHOOD DATA IN CURRENT FILTER', 16, H / 2);
+      return;
+    }
 
-    const PAD_L = 92, PAD_R = 50, PAD_T = 32, PAD_B = 12;
+    const PAD_L = 118, PAD_R = 50, PAD_T = 32, PAD_B = 12;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
-    const rowH = cH / Math.max(sorted.length, 1);
+    const rowH = cH / sorted.length;
     const maxCnt = sorted[0][1];
-    const total = sorted.reduce((s, [, c]) => s + c, 0);
 
-    sorted.forEach(([boro, cnt], i) => {
+    sorted.forEach(([nta, cnt], i) => {
       const y = PAD_T + i * rowH;
       const barH = Math.max(rowH * 0.55, 4);
       const barY = y + (rowH - barH) / 2;
       const barW = (cnt / maxCnt) * cW;
 
-      ctx.fillStyle = BOROUGH_COLORS[boro] ?? '#888';
+      ctx.fillStyle = ACCENT2;
+      ctx.globalAlpha = 0.65;
+      roundRect(ctx, PAD_L, barY, barW, barH, 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = TEXT_DIM;
+      ctx.font = `400 9px ${FONT}`;
+      ctx.textAlign = 'right';
+      const label = nta.length > 16 ? nta.slice(0, 15) + '…' : nta;
+      ctx.fillText(label, PAD_L - 6, y + rowH / 2 + 3);
+
+      ctx.fillStyle = TEXT_BRIGHT;
+      ctx.font = `700 9px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(cnt.toLocaleString(), PAD_L + barW + 6, y + rowH / 2 + 3);
+    });
+    ctx.textAlign = 'left';
+  }, [allPermits]);
+
+  // ── Chart 4: Estimated cost by type ──────────────────────────────────────
+  const drawCost = useCallback(() => {
+    const canvas = costRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(dpr, dpr);
+
+    ctx.fillStyle = PANEL_BG;
+    roundRect(ctx, 0, 0, W, H, 8); ctx.fill();
+
+    ctx.fillStyle = TEXT_BRIGHT;
+    ctx.font = `700 11px ${FONT}`;
+    ctx.fillText('DECLARED COST BY TYPE', 16, 20);
+    ctx.fillStyle = TEXT_DIM;
+    ctx.font = `400 10px ${FONT}`;
+    ctx.textAlign = 'right';
+    ctx.fillText('ESTIMATED $', W - 16, 20);
+    ctx.textAlign = 'left';
+
+    // Aggregate cost per type — estimated_job_costs is a text field
+    const costs: Record<string, number> = {};
+    allPermits.forEach(p => {
+      const t = p.job_type ?? 'OTH';
+      const v = parseFloat((p.estimated_job_costs ?? '').replace(/[$,]/g, ''));
+      if (!isNaN(v) && v > 0) costs[t] = (costs[t] ?? 0) + v;
+    });
+    const sorted = Object.entries(costs).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    if (!sorted.length) {
+      ctx.fillStyle = TEXT_DIM;
+      ctx.font = `400 10px ${FONT}`;
+      ctx.fillText('NO COST DATA IN CURRENT FILTER', 16, H / 2);
+      return;
+    }
+
+    const PAD_L = 88, PAD_R = 72, PAD_T = 32, PAD_B = 12;
+    const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
+    const rowH = cH / sorted.length;
+    const maxCost = sorted[0][1];
+
+    // Format cost compactly
+    const fmtCost = (v: number) => {
+      if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+      if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+      if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+      return `$${v.toFixed(0)}`;
+    };
+
+    sorted.forEach(([type, cost], i) => {
+      const y = PAD_T + i * rowH;
+      const barH = Math.max(rowH * 0.55, 4);
+      const barY = y + (rowH - barH) / 2;
+      const barW = (cost / maxCost) * cW;
+
+      ctx.fillStyle = WORK_TYPE_COLORS[type] ?? '#888';
       ctx.globalAlpha = 0.75;
       roundRect(ctx, PAD_L, barY, barW, barH, 2);
       ctx.fill();
@@ -345,21 +428,19 @@ export default function PermitCharts() {
       ctx.fillStyle = TEXT_DIM;
       ctx.font = `400 9px ${FONT}`;
       ctx.textAlign = 'right';
-      const label = boro === 'STATEN ISLAND' ? 'STATEN IS.' : boro;
-      ctx.fillText(label, PAD_L - 6, y + rowH / 2 + 3);
+      ctx.fillText(WORK_TYPE_LABELS[type] ?? type, PAD_L - 6, y + rowH / 2 + 3);
 
       ctx.fillStyle = TEXT_BRIGHT;
       ctx.font = `700 9px ${FONT}`;
       ctx.textAlign = 'left';
-      const pct = total ? Math.round(cnt / total * 100) : 0;
-      ctx.fillText(`${cnt.toLocaleString()}  ${pct}%`, PAD_L + barW + 6, y + rowH / 2 + 3);
+      ctx.fillText(fmtCost(cost), PAD_L + barW + 6, y + rowH / 2 + 3);
     });
     ctx.textAlign = 'left';
   }, [allPermits]);
 
-  // ── Chart 4: Top streets ─────────────────────────────────────────────────
-  const drawStreets = useCallback(() => {
-    const canvas = streetRef.current;
+  // ── Chart 5: Top owners / applicants ─────────────────────────────────────
+  const drawOwners = useCallback(() => {
+    const canvas = ownersRef.current;
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -372,36 +453,55 @@ export default function PermitCharts() {
 
     ctx.fillStyle = TEXT_BRIGHT;
     ctx.font = `700 11px ${FONT}`;
-    ctx.fillText('MOST ACTIVE STREETS', 16, 20);
+    ctx.fillText('TOP OWNERS / APPLICANTS', 16, 20);
+    ctx.fillStyle = TEXT_DIM;
+    ctx.font = `400 10px ${FONT}`;
+    ctx.textAlign = 'right';
+    ctx.fillText('PERMIT COUNT', W - 16, 20);
+    ctx.textAlign = 'left';
 
+    // Prefer business name; fall back to personal name; skip blanks/unknowns
+    const SKIP = new Set(['', 'UNKNOWN', 'N/A', 'NA', 'NONE']);
     const counts: Record<string, number> = {};
     allPermits.forEach(p => {
-      const s = p.street_name?.trim().toUpperCase();
-      if (s) counts[s] = (counts[s] ?? 0) + 1;
+      const raw = (
+        p.owner_business_name ||
+        p.applicant_business_name ||
+        (p.owner_name ? p.owner_name.trim() : '') ||
+        [p.applicant_first_name, p.applicant_last_name].filter(Boolean).join(' ')
+      ).trim().toUpperCase();
+      if (!raw || SKIP.has(raw)) return;
+      counts[raw] = (counts[raw] ?? 0) + 1;
     });
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
-    if (!sorted.length) return;
+    if (!sorted.length) {
+      ctx.fillStyle = TEXT_DIM;
+      ctx.font = `400 10px ${FONT}`;
+      ctx.fillText('NO OWNER DATA IN CURRENT FILTER', 16, H / 2);
+      return;
+    }
 
     const PAD_L = 130, PAD_R = 50, PAD_T = 32, PAD_B = 12;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
     const rowH = cH / sorted.length;
     const maxCnt = sorted[0][1];
 
-    sorted.forEach(([street, cnt], i) => {
+    sorted.forEach(([owner, cnt], i) => {
       const y = PAD_T + i * rowH;
       const barH = Math.max(rowH * 0.55, 4);
       const barY = y + (rowH - barH) / 2;
       const barW = (cnt / maxCnt) * cW;
 
-      ctx.fillStyle = 'rgba(251,191,36,0.65)';
+      ctx.fillStyle = ACCENT3;
+      ctx.globalAlpha = 0.65;
       roundRect(ctx, PAD_L, barY, barW, barH, 2);
       ctx.fill();
+      ctx.globalAlpha = 1;
 
       ctx.fillStyle = TEXT_DIM;
       ctx.font = `400 9px ${FONT}`;
       ctx.textAlign = 'right';
-      // Truncate long street names
-      const label = street.length > 18 ? street.slice(0, 17) + '…' : street;
+      const label = owner.length > 18 ? owner.slice(0, 17) + '…' : owner;
       ctx.fillText(label, PAD_L - 6, y + rowH / 2 + 3);
 
       ctx.fillStyle = TEXT_BRIGHT;
@@ -414,17 +514,17 @@ export default function PermitCharts() {
 
   // Redraw all on data/size change
   useEffect(() => { drawTrend(); }, [drawTrend]);
-  useEffect(() => { drawTypes(); drawBorough(); drawStreets(); }, [drawTypes, drawBorough, drawStreets]);
+  useEffect(() => { drawTypes(); drawNTA(); drawCost(); drawOwners(); }, [drawTypes, drawNTA, drawCost, drawOwners]);
 
   // ResizeObserver for redraws
   useEffect(() => {
-    const canvases = [trendRef, typeRef, boroughRef, streetRef];
+    const canvases = [trendRef, typeRef, ntaRef, costRef, ownersRef];
     const ro = new ResizeObserver(() => {
-      drawTrend(); drawTypes(); drawBorough(); drawStreets();
+      drawTrend(); drawTypes(); drawNTA(); drawCost(); drawOwners();
     });
     canvases.forEach(r => { if (r.current?.parentElement) ro.observe(r.current.parentElement); });
     return () => ro.disconnect();
-  }, [drawTrend, drawTypes, drawBorough, drawStreets]);
+  }, [drawTrend, drawTypes, drawNTA, drawCost, drawOwners]);
 
   return (
     <div className="permit-charts">
@@ -465,11 +565,14 @@ export default function PermitCharts() {
         <div className="pc-panel pc-type">
           <canvas ref={typeRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
-        <div className="pc-panel pc-borough">
-          <canvas ref={boroughRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+        <div className="pc-panel pc-nta">
+          <canvas ref={ntaRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
-        <div className="pc-panel pc-streets">
-          <canvas ref={streetRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+        <div className="pc-panel pc-cost">
+          <canvas ref={costRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+        </div>
+        <div className="pc-panel pc-owners" style={{ gridColumn: '1 / -1' }}>
+          <canvas ref={ownersRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
 
       </div>
