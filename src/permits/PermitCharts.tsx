@@ -264,7 +264,7 @@ export default function PermitCharts() {
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
     if (!sorted.length) return;
 
-    const PAD_L = 88, PAD_R = 50, PAD_T = 32, PAD_B = 12;
+    const PAD_L = 108, PAD_R = 50, PAD_T = 32, PAD_B = 12;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
     const rowH = cH / sorted.length;
     const maxCnt = sorted[0][1];
@@ -283,10 +283,11 @@ export default function PermitCharts() {
       ctx.globalAlpha = 1;
 
       // Label
+      const labelText = WORK_TYPE_LABELS[type] ?? type;
       ctx.fillStyle = TEXT_DIM;
       ctx.font = `400 9px ${FONT}`;
       ctx.textAlign = 'right';
-      ctx.fillText(WORK_TYPE_LABELS[type] ?? type, PAD_L - 6, y + rowH / 2 + 3);
+      ctx.fillText(labelText, PAD_L - 6, y + rowH / 2 + 3);
 
       // Count
       ctx.fillStyle = TEXT_BRIGHT;
@@ -461,7 +462,7 @@ export default function PermitCharts() {
     ctx.textAlign = 'left';
 
     // Prefer business name; fall back to personal name; skip blanks/unknowns
-    const SKIP = new Set(['', 'UNKNOWN', 'N/A', 'NA', 'NONE']);
+    const SKIP = new Set(['', 'UNKNOWN', 'N/A', 'NA', 'NONE', 'NOT APPLICABLE', 'NOT AVAILABLE', 'NO BUSINESS NAME']);
     const counts: Record<string, number> = {};
     allPermits.forEach(p => {
       const raw = (
