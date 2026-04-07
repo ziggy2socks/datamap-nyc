@@ -29,7 +29,7 @@ const MAP_STYLE = {
 
 // Mode colors — dot fill
 const MODE_COLORS: Record<string, string> = {
-  pedestrian: '#f87171',  // red
+  pedestrian: 'rgba(255,255,255,0.9)',  // white
   cyclist:    '#34d399',  // green
   motorist:   '#60a5fa',  // blue
   multi:      '#c084fc',  // purple

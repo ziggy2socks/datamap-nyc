@@ -24,7 +24,7 @@ const SEV_COLORS = {
   none:   'rgba(148,163,184,0.4)',
 };
 const MODE_COLORS = {
-  pedestrian: '#f87171',
+  pedestrian: 'rgba(255,255,255,0.85)',
   cyclist:    '#34d399',
   motorist:   '#60a5fa',
   multi:      '#c084fc',
