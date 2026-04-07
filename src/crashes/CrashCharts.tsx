@@ -185,20 +185,22 @@ export default function CrashCharts() {
       }
     });
 
-    // Legend
-    const legend = [['fatal', 'Fatal'], ['injury', 'Injury'], ['none', 'No injury']] as const;
-    let lx = W - PAD_R - 6;
+    // Legend row 1 (bottom): bar categories
+    const legend = [['none', 'No injury'], ['injury', 'Injury'], ['fatal', 'Fatal']] as const;
+    let lx = PAD_L + 8;
     legend.forEach(([key, label]) => {
-      ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'right';
-      ctx.fillStyle = TEXT_DIM; ctx.fillText(label, lx, H - 10);
-      lx -= ctx.measureText(label).width + 18;
       ctx.fillStyle = SEV_COLORS[key]; ctx.globalAlpha = 0.8;
-      ctx.fillRect(lx, H - 19, 10, 8); ctx.globalAlpha = 1;
-      lx -= 16;
+      ctx.fillRect(lx, H - 20, 9, 7); ctx.globalAlpha = 1;
+      lx += 13;
+      ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'left';
+      ctx.fillText(label, lx, H - 13);
+      lx += ctx.measureText(label).width + 14;
     });
-    // Red line legend item
-    ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'right';
-    ctx.fillText('— fatalities (right axis)', W - 8, H - 10);
+    // Legend row 1 right: fatality line
+    ctx.fillStyle = '#ef4444'; ctx.globalAlpha = 0.8;
+    ctx.fillRect(W - PAD_R - 120, H - 20, 14, 2); ctx.globalAlpha = 1;
+    ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'left';
+    ctx.fillText('fatalities →', W - PAD_R - 102, H - 13);
     ctx.textAlign = 'left';
   }, [trendData, trendLoading]);
 
@@ -364,8 +366,9 @@ export default function CrashCharts() {
     });
     const sorted = Object.entries(counts).sort((a, b) => b[1].cnt - a[1].cnt).slice(0, 10);
     if (!sorted.length) {
-      ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`;
-      ctx.fillText('INSUFFICIENT INTERSECTION DATA', 16, H / 2);
+      // Fallback: top streets when no intersection pairs available
+      ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'left';
+      ctx.fillText('NO INTERSECTION DATA — EXPAND DATE RANGE', 16, H / 2);
       return;
     }
 
