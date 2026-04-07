@@ -31,34 +31,28 @@ const MODE_COLORS = {
 };
 
 // Monthly trend query
-interface MonthSev { month: string; fatal: number; injury: number; none: number; }
+interface MonthSev { month: string; total: number; fatal: number; injury: number; none: number; }
 
 async function fetchMonthlyTrend(): Promise<MonthSev[]> {
-  const url = '/api/crashes?' + new URLSearchParams({
-    $select: `date_trunc_ym(crash_date) as month,` +
-      `sum(number_of_persons_killed) as killed,` +
-      `sum(number_of_persons_injured) as injured,` +
-      `count(*) as total`,
-    $where: `crash_date >= '2013-07-01T00:00:00.000' AND latitude IS NOT NULL`,
-    $group: 'month',
-    $order: 'month ASC',
-    $limit: '2000',
-  });
-  const res = await fetch(url, { cache: 'no-store' });
+  // Build manually — URLSearchParams encodes '$' -> '%24' which breaks Socrata
+  const qs = [
+    `$select=date_trunc_ym(crash_date)%20as%20month,sum(number_of_persons_killed)%20as%20killed,sum(number_of_persons_injured)%20as%20injured,count(*)%20as%20total`,
+    `$where=crash_date%20>=%20'2013-07-01T00:00:00.000'%20AND%20latitude%20IS%20NOT%20NULL`,
+    `$group=month`,
+    `$order=month%20ASC`,
+    `$limit=2000`,
+  ].join('&');
+  const res = await fetch(`/api/crashes?${qs}`, { cache: 'no-store' });
   if (!res.ok) return [];
   const rows: any[] = await res.json();
   return rows
     .filter(r => r.month)
     .map(r => {
-      const total   = parseInt(r.total  ?? '0');
-      const killed  = parseInt(r.killed ?? '0');
+      const total   = parseInt(r.total   ?? '0');
+      const killed  = parseInt(r.killed  ?? '0');
       const injured = parseInt(r.injured ?? '0');
-      return {
-        month:  r.month.slice(0, 7),
-        fatal:  killed,
-        injury: injured,
-        none:   Math.max(0, total - (killed > 0 ? 1 : 0) - (injured > 0 ? injured : 0)),
-      };
+      const none    = Math.max(0, total - killed - injured);
+      return { month: r.month.slice(0, 7), total, fatal: killed, injury: injured, none };
     });
 }
 
@@ -98,7 +92,7 @@ export default function CrashCharts() {
     fetchMonthlyTrend().then(d => { setTrendData(d); setTrendLoading(false); });
   }, []);
 
-  // ── Chart 1: Monthly trend ────────────────────────────────────────────────
+  // ── Chart 1: Monthly trend + fatality line ──────────────────────────────
   const drawTrend = useCallback(() => {
     const canvas = trendRef.current;
     if (!canvas || trendLoading) return;
@@ -108,17 +102,20 @@ export default function CrashCharts() {
     ctx.fillStyle = TEXT_BRIGHT; ctx.font = `700 11px ${FONT}`;
     ctx.fillText('MONTHLY COLLISIONS', 16, 20);
     ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`;
-    ctx.textAlign = 'right'; ctx.fillText('2013 → PRESENT', W - 16, 20); ctx.textAlign = 'left';
+    ctx.textAlign = 'right'; ctx.fillText('FULL HISTORY 2013→PRESENT', W - 16, 20); ctx.textAlign = 'left';
 
-    const PAD_L = 52, PAD_R = 16, PAD_T = 36, PAD_B = 36;
+    const PAD_L = 52, PAD_R = 44, PAD_T = 36, PAD_B = 36;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
     const months = trendData.map(d => d.month);
     if (!months.length) return;
 
-    const totals = trendData.map(d => d.fatal + d.injury + d.none);
-    const maxVal = Math.max(...totals);
+    const totals = trendData.map(d => d.total);
+    const maxVal = Math.max(...totals, 1);
+    const fatals = trendData.map(d => d.fatal);
+    const maxFatal = Math.max(...fatals, 1);
     const gridCount = 4;
 
+    // Left grid + axis
     ctx.strokeStyle = GRID_LINE; ctx.lineWidth = 1;
     for (let i = 0; i <= gridCount; i++) {
       const y = PAD_T + cH - (i / gridCount) * cH;
@@ -129,35 +126,50 @@ export default function CrashCharts() {
       }
     }
 
+    // Right axis labels for fatalities
+    ctx.fillStyle = 'rgba(239,68,68,0.5)'; ctx.font = `400 8px ${FONT}`; ctx.textAlign = 'left';
+    for (let i = 1; i <= 2; i++) {
+      const y = PAD_T + cH - (i / 2) * cH;
+      ctx.fillText(`${Math.round(maxFatal * i / 2)}`, W - PAD_R + 4, y + 3);
+    }
+    ctx.textAlign = 'left';
+
     const barW = Math.max(1, cW / months.length - 0.5);
 
-    // Stacked: injury (base) + fatal (top) — no-injury is transparent/dim
+    // Stacked bars
     trendData.forEach((d, i) => {
       const x = PAD_L + i * (cW / months.length);
       let yBase = PAD_T + cH;
 
-      // No-injury (dim)
       const hNone = (d.none / maxVal) * cH;
       yBase -= hNone;
       ctx.fillStyle = SEV_COLORS.none;
       ctx.fillRect(x, yBase, Math.max(barW, 1), hNone);
 
-      // Injury
       const hInj = (d.injury / maxVal) * cH;
       yBase -= hInj;
       ctx.fillStyle = SEV_COLORS.injury;
-      ctx.globalAlpha = 0.75;
+      ctx.globalAlpha = 0.65;
       ctx.fillRect(x, yBase, Math.max(barW, 1), hInj);
       ctx.globalAlpha = 1;
 
-      // Fatal
       const hFatal = (d.fatal / maxVal) * cH;
       yBase -= hFatal;
       ctx.fillStyle = SEV_COLORS.fatal;
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.85;
       ctx.fillRect(x, yBase, Math.max(barW, 1), hFatal);
       ctx.globalAlpha = 1;
     });
+
+    // Fatality line (right Y-axis scale)
+    ctx.beginPath();
+    trendData.forEach((d, i) => {
+      const x = PAD_L + i * (cW / months.length) + barW / 2;
+      const y = PAD_T + cH - (d.fatal / maxFatal) * cH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.85;
+    ctx.stroke(); ctx.globalAlpha = 1;
 
     // X labels — year markers
     ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'center';
@@ -175,7 +187,7 @@ export default function CrashCharts() {
 
     // Legend
     const legend = [['fatal', 'Fatal'], ['injury', 'Injury'], ['none', 'No injury']] as const;
-    let lx = W - 16;
+    let lx = W - PAD_R - 6;
     legend.forEach(([key, label]) => {
       ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'right';
       ctx.fillStyle = TEXT_DIM; ctx.fillText(label, lx, H - 10);
@@ -184,6 +196,9 @@ export default function CrashCharts() {
       ctx.fillRect(lx, H - 19, 10, 8); ctx.globalAlpha = 1;
       lx -= 16;
     });
+    // Red line legend item
+    ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'right';
+    ctx.fillText('— fatalities (right axis)', W - 8, H - 10);
     ctx.textAlign = 'left';
   }, [trendData, trendLoading]);
 
@@ -197,7 +212,7 @@ export default function CrashCharts() {
     ctx.fillText('BY SEVERITY', 16, 20);
     ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`;
     ctx.textAlign = 'right';
-    ctx.fillText(`${crashes.length.toLocaleString()} TOTAL`, W - 16, 20);
+    ctx.fillText('CURRENT FILTER', W - 16, 20);
     ctx.textAlign = 'left';
 
     const counts = { fatal: 0, injury: 0, none: 0 };
@@ -240,6 +255,8 @@ export default function CrashCharts() {
     ctx.fillStyle = PANEL_BG; roundRect(ctx, 0, 0, W, H, 8); ctx.fill();
     ctx.fillStyle = TEXT_BRIGHT; ctx.font = `700 11px ${FONT}`;
     ctx.fillText('TOP FACTORS', 16, 20);
+    ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'right';
+    ctx.fillText('CURRENT FILTER', W - 16, 20); ctx.textAlign = 'left';
 
     const SKIP = new Set(['Unspecified', '1', '', undefined]);
     const counts: Record<string, number> = {};
@@ -285,6 +302,8 @@ export default function CrashCharts() {
     ctx.fillStyle = PANEL_BG; roundRect(ctx, 0, 0, W, H, 8); ctx.fill();
     ctx.fillStyle = TEXT_BRIGHT; ctx.font = `700 11px ${FONT}`;
     ctx.fillText('BY MODE', 16, 20);
+    ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'right';
+    ctx.fillText('CURRENT FILTER', W - 16, 20); ctx.textAlign = 'left';
 
     const counts: Record<string, number> = {};
     crashes.forEach(c => { const m = c.mode ?? 'motorist'; counts[m] = (counts[m] ?? 0) + 1; });
@@ -326,6 +345,8 @@ export default function CrashCharts() {
     ctx.fillStyle = PANEL_BG; roundRect(ctx, 0, 0, W, H, 8); ctx.fill();
     ctx.fillStyle = TEXT_BRIGHT; ctx.font = `700 11px ${FONT}`;
     ctx.fillText('TOP INTERSECTIONS', 16, 20);
+    ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'right';
+    ctx.fillText('CURRENT FILTER', W - 16, 20); ctx.textAlign = 'left';
     ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`;
     ctx.textAlign = 'right'; ctx.fillText('BY CRASH COUNT', W - 16, 20); ctx.textAlign = 'left';
 
