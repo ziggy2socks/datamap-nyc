@@ -12,6 +12,14 @@
       "destination": "https://data.cityofnewyork.us/resource/w9ak-ipjd.json/:path*"
     },
     {
+      "source": "/api/crashes",
+      "destination": "https://data.cityofnewyork.us/resource/h9gi-nx95.json"
+    },
+    {
+      "source": "/api/crashes/:path*",
+      "destination": "https://data.cityofnewyork.us/resource/h9gi-nx95.json/:path*"
+    },
+    {
       "source": "/api/311",
       "destination": "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
     },
@@ -34,6 +42,10 @@
     {
       "source": "/data/:path*",
       "destination": "/data/:path*"
+    },
+    {
+      "source": "/crashes",
+      "destination": "/index.html"
     },
     {
       "source": "/live",

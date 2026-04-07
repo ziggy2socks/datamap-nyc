@@ -16,6 +16,9 @@ async function render() {
   } else if (path.startsWith('/permits')) {
     const mod = await import('./permits/PermitsApp');
     Component = mod.default;
+  } else if (path.startsWith('/crashes')) {
+    const mod = await import('./crashes/CrashesApp');
+    Component = mod.default;
   } else if (path.startsWith('/live')) {
     const mod = await import('./live/LiveApp');
     Component = mod.default;
