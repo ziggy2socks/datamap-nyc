@@ -174,11 +174,11 @@
 }
 .cc-subtitle { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.42); letter-spacing: 0.04em; }
 
-/* Grid: trend (full top) | severity + mode (row 2) | factors + intersections (row 3) */
+/* Grid: trend (full top) | severity + mode (row 2) | factors (full bottom) */
 .cc-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: minmax(200px, 1.6fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  grid-template-rows: minmax(200px, 1.6fr) minmax(160px, 1fr) minmax(150px, 0.8fr);
   gap: 12px; flex: 1; min-height: 0; overflow-y: auto;
 }
 .cc-panel { border-radius: 8px; overflow: hidden; min-height: 0; }

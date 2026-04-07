@@ -82,8 +82,6 @@ export default function CrashCharts() {
   const severityRef  = useRef<HTMLCanvasElement>(null);
   const factorsRef   = useRef<HTMLCanvasElement>(null);
   const modeRef      = useRef<HTMLCanvasElement>(null);
-  const intersectRef = useRef<HTMLCanvasElement>(null);
-
   const [trendData,    setTrendData]    = useState<MonthSev[]>([]);
   const [trendLoading, setTrendLoading] = useState(true);
 
@@ -171,6 +169,32 @@ export default function CrashCharts() {
     ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.85;
     ctx.stroke(); ctx.globalAlpha = 1;
 
+    // Filter window highlight — show current filter date range as a subtle band
+    const filterFrom = filters.dateFrom;
+    const filterTo   = filters.dateTo;
+    const fromIdx = months.findIndex(m => m >= filterFrom.slice(0, 7));
+    const toIdx   = months.findIndex(m => m >  filterTo.slice(0, 7));
+    const fi = fromIdx >= 0 ? fromIdx : 0;
+    const ti = toIdx   >= 0 ? toIdx   : months.length;
+    const fx = PAD_L + fi * (cW / months.length);
+    const tx = PAD_L + ti * (cW / months.length);
+    // Shaded band
+    ctx.fillStyle = 'rgba(255,255,255,0.055)';
+    ctx.fillRect(fx, PAD_T, tx - fx, cH);
+    // Left and right border lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(fx, PAD_T - 4); ctx.lineTo(fx, PAD_T + cH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx, PAD_T - 4); ctx.lineTo(tx, PAD_T + cH); ctx.stroke();
+    ctx.setLineDash([]);
+    // Label above the band
+    const bandLabel = `${filterFrom} → ${filterTo}`;
+    const bandMidX = fx + (tx - fx) / 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = `400 8px ${FONT}`; ctx.textAlign = 'center';
+    ctx.fillText(bandLabel, Math.max(bandMidX, PAD_L + 40), PAD_T - 6);
+
     // X labels — year markers
     ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'center';
     let lastYear = '';
@@ -202,7 +226,7 @@ export default function CrashCharts() {
     ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`; ctx.textAlign = 'left';
     ctx.fillText('fatalities →', W - PAD_R - 102, H - 13);
     ctx.textAlign = 'left';
-  }, [trendData, trendLoading]);
+  }, [trendData, trendLoading, filters]);
 
   // ── Chart 2: Severity breakdown ───────────────────────────────────────────
   const drawSeverity = useCallback(() => {
@@ -339,83 +363,20 @@ export default function CrashCharts() {
     ctx.textAlign = 'left';
   }, [crashes]);
 
-  // ── Chart 5: Top intersections ────────────────────────────────────────────
-  const drawIntersections = useCallback(() => {
-    const canvas = intersectRef.current;
-    if (!canvas) return;
-    const { ctx, W, H } = initCanvas(canvas);
-    ctx.fillStyle = PANEL_BG; roundRect(ctx, 0, 0, W, H, 8); ctx.fill();
-    ctx.fillStyle = TEXT_BRIGHT; ctx.font = `700 11px ${FONT}`;
-    ctx.fillText('TOP INTERSECTIONS', 16, 20);
-    ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'right';
-    ctx.fillText('CURRENT FILTER', W - 16, 20); ctx.textAlign = 'left';
-    ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`;
-    ctx.textAlign = 'right'; ctx.fillText('BY CRASH COUNT', W - 16, 20); ctx.textAlign = 'left';
-
-    const counts: Record<string, { cnt: number; killed: number; injured: number }> = {};
-    crashes.forEach(c => {
-      const st1 = c.on_street_name?.trim().toUpperCase();
-      const st2 = c.cross_street_name?.trim().toUpperCase();
-      if (!st1 || !st2) return;
-      // Normalize order so A&B === B&A
-      const key = [st1, st2].sort().join(' & ');
-      if (!counts[key]) counts[key] = { cnt: 0, killed: 0, injured: 0 };
-      counts[key].cnt++;
-      counts[key].killed  += parseInt(c.number_of_persons_killed  || '0');
-      counts[key].injured += parseInt(c.number_of_persons_injured || '0');
-    });
-    const sorted = Object.entries(counts).sort((a, b) => b[1].cnt - a[1].cnt).slice(0, 10);
-    if (!sorted.length) {
-      // Fallback: top streets when no intersection pairs available
-      ctx.fillStyle = TEXT_DIM; ctx.font = `400 10px ${FONT}`; ctx.textAlign = 'left';
-      ctx.fillText('NO INTERSECTION DATA — EXPAND DATE RANGE', 16, H / 2);
-      return;
-    }
-
-    const PAD_L = 160, PAD_R = 50, PAD_T = 32, PAD_B = 12;
-    const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
-    const rowH = cH / sorted.length;
-    const maxCnt = sorted[0][1].cnt;
-
-    sorted.forEach(([intersection, data], i) => {
-      const y = PAD_T + i * rowH;
-      const barH = Math.max(rowH * 0.55, 4);
-      const barY = y + (rowH - barH) / 2;
-      const barW = (data.cnt / maxCnt) * cW;
-
-      // Color by severity at this intersection
-      const color = data.killed > 0 ? SEV_COLORS.fatal : data.injured > 0 ? SEV_COLORS.injury : '#888';
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.7;
-      roundRect(ctx, PAD_L, barY, barW, barH, 2); ctx.fill();
-      ctx.globalAlpha = 1;
-
-      ctx.fillStyle = TEXT_DIM; ctx.font = `400 9px ${FONT}`;
-      ctx.textAlign = 'right';
-      const label = intersection.length > 22 ? intersection.slice(0, 21) + '…' : intersection;
-      ctx.fillText(label, PAD_L - 6, y + rowH / 2 + 3);
-
-      ctx.fillStyle = TEXT_BRIGHT; ctx.font = `700 9px ${FONT}`;
-      ctx.textAlign = 'left';
-      const suffix = data.killed > 0 ? ` ⚠${data.killed}💀` : data.injured > 0 ? ` ${data.injured}inj` : '';
-      ctx.fillText(`${data.cnt}${suffix}`, PAD_L + barW + 6, y + rowH / 2 + 3);
-    });
-    ctx.textAlign = 'left';
-  }, [crashes]);
 
   useEffect(() => { drawTrend(); }, [drawTrend]);
   useEffect(() => {
-    drawSeverity(); drawFactors(); drawMode(); drawIntersections();
-  }, [drawSeverity, drawFactors, drawMode, drawIntersections]);
+    drawSeverity(); drawFactors(); drawMode();
+  }, [drawSeverity, drawFactors, drawMode]);
 
   useEffect(() => {
-    const refs = [trendRef, severityRef, factorsRef, modeRef, intersectRef];
+    const refs = [trendRef, severityRef, factorsRef, modeRef];
     const ro = new ResizeObserver(() => {
-      drawTrend(); drawSeverity(); drawFactors(); drawMode(); drawIntersections();
+      drawTrend(); drawSeverity(); drawFactors(); drawMode();
     });
     refs.forEach(r => { if (r.current?.parentElement) ro.observe(r.current.parentElement); });
     return () => ro.disconnect();
-  }, [drawTrend, drawSeverity, drawFactors, drawMode, drawIntersections]);
+  }, [drawTrend, drawSeverity, drawFactors, drawMode]);
 
   return (
     <div className="crash-charts">
@@ -443,9 +404,7 @@ export default function CrashCharts() {
         <div className="cc-panel cc-factors">
           <canvas ref={factorsRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
-        <div className="cc-panel cc-intersections">
-          <canvas ref={intersectRef} style={{ width: '100%', height: '100%', display: 'block' }} />
-        </div>
+
       </div>
     </div>
   );
