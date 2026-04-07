@@ -191,9 +191,17 @@ export default function CrashSidebar({
         <div className="cs-section">
           <div className="cs-section-label">LEGEND</div>
           <div className="cs-legend">
-            {([['fatal', '#ef4444', 'Fatal'], ['injury', '#f59e0b', 'Injury'], ['none', 'rgba(148,163,184,0.4)', 'No injury']] as const).map(([, color, label]) => (
+            <div className="cs-legend-section">MODE (fill)</div>
+            {([['#f87171', 'Pedestrian'], ['#34d399', 'Cyclist'], ['#60a5fa', 'Motorist'], ['#c084fc', 'Multiple']] as const).map(([color, label]) => (
               <div key={label} className="cs-legend-row">
                 <span className="cs-legend-dot" style={{ background: color }} />
+                <span>{label}</span>
+              </div>
+            ))}
+            <div className="cs-legend-section" style={{ marginTop: 6 }}>SEVERITY (outline)</div>
+            {([['#ef4444', 'Fatal'], ['#f59e0b', 'Injury'], ['rgba(255,255,255,0.15)', 'No injury']] as const).map(([color, label]) => (
+              <div key={label} className="cs-legend-row">
+                <span className="cs-legend-ring" style={{ border: `2px solid ${color}` }} />
                 <span>{label}</span>
               </div>
             ))}

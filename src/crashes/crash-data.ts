@@ -101,13 +101,10 @@ export async function fetchCrashes(
   }
 
   const where = clauses.join(' AND ');
-  const params = new URLSearchParams({
-    $where:  where,
-    $order:  'crash_date DESC',
-    $limit:  String(limit),
-  });
+  // Build query string manually — URLSearchParams encodes '$' → '%24' which breaks Socrata
+  const qs = `$where=${encodeURIComponent(where)}&$order=crash_date%20DESC&$limit=${limit}`;
 
-  const res = await fetch(`${BASE}?${params}`, { cache: 'no-store' });
+  const res = await fetch(`${BASE}?${qs}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Crashes API ${res.status}`);
   const rows: Crash[] = await res.json();
 

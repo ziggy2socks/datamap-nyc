@@ -119,6 +119,11 @@
 .cs-legend { display: flex; flex-direction: column; gap: 4px; }
 .cs-legend-row { display: flex; align-items: center; gap: 7px; font-size: 9px; color: rgba(255,255,255,0.5); }
 .cs-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cs-legend-ring {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: transparent;
+}
+.cs-legend-section { font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.2); letter-spacing: 0.08em; margin-top: 2px; }
 
 /* List */
 .cs-list-container { flex: 1; min-height: 200px; }
@@ -201,10 +206,12 @@
 }
 .crash-popup-wrap .maplibregl-popup-close-button { color: rgba(255,255,255,0.4); padding: 6px 8px; }
 .crash-popup { padding: 12px 14px; }
+.cp-badges { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .cp-severity {
   display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
-  padding: 2px 6px; border-radius: 3px; margin-bottom: 6px;
+  padding: 2px 6px; border-radius: 3px;
 }
+.cp-mode { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; }
 .cp-severity--fatal  { background: rgba(239,68,68,0.25); color: #f87171; border: 1px solid rgba(239,68,68,0.4); }
 .cp-severity--injury { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.35); }
 .cp-severity--none   { background: rgba(148,163,184,0.1); color: rgba(148,163,184,0.7); border: 1px solid rgba(148,163,184,0.2); }

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useCrashes } from './CrashContext';
-import { getCrashColor, formatCrashAddress, formatCrashDate, crashSummary } from './crash-data';
+import { formatCrashAddress, formatCrashDate, crashSummary } from './crash-data';
 import type { Crash } from './types';
 
 const MAP_STYLE = {
@@ -27,6 +27,19 @@ const MAP_STYLE = {
   ],
 };
 
+// Mode colors — dot fill
+const MODE_COLORS: Record<string, string> = {
+  pedestrian: '#f87171',  // red
+  cyclist:    '#34d399',  // green
+  motorist:   '#60a5fa',  // blue
+  multi:      '#c084fc',  // purple
+};
+
+
+function getModeColor(mode: string | undefined): string {
+  return MODE_COLORS[mode ?? 'motorist'] ?? '#60a5fa';
+}
+
 export default function CrashMap() {
   const { crashes, selected, setSelected } = useCrashes();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,84 +63,66 @@ export default function CrashMap() {
       map.addSource('crashes', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
-        cluster: true,
-        clusterMaxZoom: 12,
-        clusterRadius: 40,
       });
 
-      // Cluster circles
+      // No-injury dots (bottom layer — drawn first, least prominent)
       map.addLayer({
-        id: 'crash-clusters',
+        id: 'crash-dots-none',
         type: 'circle',
         source: 'crashes',
-        filter: ['has', 'point_count'],
+        filter: ['==', ['get', 'severity'], 'none'],
         paint: {
-          'circle-color': [
-            'step', ['get', 'point_count'],
-            'rgba(245,158,11,0.5)',   50,
-            'rgba(239,68,68,0.55)',   200,
-            'rgba(220,38,38,0.65)',
-          ],
-          'circle-radius': ['step', ['get', 'point_count'], 14, 50, 22, 200, 30],
-          'circle-stroke-width': 1,
-          'circle-stroke-color': 'rgba(255,255,255,0.15)',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2, 14, 4, 17, 7],
+          'circle-color': ['get', 'modeColor'],
+          'circle-opacity': 0.35,
+          'circle-stroke-width': 0,
         },
       });
 
-      // Cluster count labels
+      // Injury dots (middle layer)
       map.addLayer({
-        id: 'crash-cluster-count',
-        type: 'symbol',
-        source: 'crashes',
-        filter: ['has', 'point_count'],
-        layout: {
-          'text-field': '{point_count_abbreviated}',
-          'text-font': ['Open Sans Bold'],
-          'text-size': 11,
-        },
-        paint: { 'text-color': '#fff' },
-      });
-
-      // Individual dots
-      map.addLayer({
-        id: 'crash-dots',
+        id: 'crash-dots-injury',
         type: 'circle',
         source: 'crashes',
-        filter: ['!', ['has', 'point_count']],
+        filter: ['==', ['get', 'severity'], 'injury'],
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 14, 6, 17, 10],
-          'circle-color': ['get', 'color'],
-          'circle-opacity': ['case', ['get', 'isNone'], 0.4, 0.85],
-          'circle-stroke-width': ['case', ['==', ['get', 'severity'], 'fatal'], 1.5, 0.5],
-          'circle-stroke-color': ['case', ['==', ['get', 'severity'], 'fatal'], 'rgba(255,255,255,0.5)', 'rgba(0,0,0,0.3)'],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 14, 5, 17, 9],
+          'circle-color': ['get', 'modeColor'],
+          'circle-opacity': 0.8,
+          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 14, 1.5],
+          'circle-stroke-color': '#f59e0b',
+          'circle-stroke-opacity': 0.85,
         },
       });
 
-      // Click individual dot
-      map.on('click', 'crash-dots', (e) => {
-        const feat = e.features?.[0];
-        if (!feat) return;
-        const crash: Crash = JSON.parse((feat.properties as Record<string, string>)._raw ?? '{}');
-        setSelected(crash);
+      // Fatal dots (top layer — most prominent)
+      map.addLayer({
+        id: 'crash-dots-fatal',
+        type: 'circle',
+        source: 'crashes',
+        filter: ['==', ['get', 'severity'], 'fatal'],
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 7, 17, 11],
+          'circle-color': ['get', 'modeColor'],
+          'circle-opacity': 1,
+          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 2.5],
+          'circle-stroke-color': '#ef4444',
+          'circle-stroke-opacity': 1,
+        },
       });
 
-      // Click cluster → zoom in
-      map.on('click', 'crash-clusters', (e) => {
-        const feat = e.features?.[0];
-        if (!feat) return;
-        const clusterId = feat.properties?.cluster_id;
-        const src = map.getSource('crashes') as maplibregl.GeoJSONSource;
-        src.getClusterExpansionZoom(clusterId)
-          .then((zoom: number) => {
-            map.easeTo({ center: (feat.geometry as GeoJSON.Point).coordinates as [number, number], zoom });
-          })
-          .catch(() => {});
-      });
+      const CLICK_LAYERS = ['crash-dots-fatal', 'crash-dots-injury', 'crash-dots-none'];
 
-      map.on('mouseenter', 'crash-dots',     () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'crash-dots',     () => { map.getCanvas().style.cursor = ''; });
-      map.on('mouseenter', 'crash-clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', 'crash-clusters', () => { map.getCanvas().style.cursor = ''; });
+      CLICK_LAYERS.forEach(layer => {
+        map.on('click', layer, (e) => {
+          const feat = e.features?.[0];
+          if (!feat) return;
+          const crash: Crash = JSON.parse((feat.properties as Record<string, string>)._raw ?? '{}');
+          setSelected(crash);
+        });
+        map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+      });
     });
 
     return () => { map.remove(); mapRef.current = null; };
@@ -137,27 +132,29 @@ export default function CrashMap() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const src = map.getSource('crashes') as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-
-    src.setData({
-      type: 'FeatureCollection',
-      features: crashes
-        .filter(c => c.latitude && c.longitude)
-        .map(c => ({
-          type: 'Feature' as const,
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [parseFloat(c.longitude!), parseFloat(c.latitude!)],
-          },
-          properties: {
-            color:    getCrashColor(c.severity ?? 'none'),
-            severity: c.severity ?? 'none',
-            isNone:   c.severity === 'none',
-            _raw:     JSON.stringify(c),
-          },
-        })),
-    });
+    const update = () => {
+      const src = map.getSource('crashes') as maplibregl.GeoJSONSource | undefined;
+      if (!src) return;
+      src.setData({
+        type: 'FeatureCollection',
+        features: crashes
+          .filter(c => c.latitude && c.longitude)
+          .map(c => ({
+            type: 'Feature' as const,
+            geometry: {
+              type: 'Point' as const,
+              coordinates: [parseFloat(c.longitude!), parseFloat(c.latitude!)],
+            },
+            properties: {
+              modeColor: getModeColor(c.mode),
+              severity:  c.severity ?? 'none',
+              _raw:      JSON.stringify(c),
+            },
+          })),
+      });
+    };
+    if (map.isStyleLoaded()) update();
+    else map.once('load', update);
   }, [crashes]);
 
   // Popup for selected crash
@@ -171,9 +168,15 @@ export default function CrashMap() {
       .filter(f => f && f !== 'Unspecified' && f !== '1')
       .join(', ');
 
+    const modeLabel = (selected.mode ?? 'motorist').charAt(0).toUpperCase() + (selected.mode ?? 'motorist').slice(1);
+    const modeColor = getModeColor(selected.mode);
+
     const html = `
       <div class="crash-popup">
-        <div class="cp-severity cp-severity--${selected.severity}">${(selected.severity ?? 'none').toUpperCase()}</div>
+        <div class="cp-badges">
+          <span class="cp-severity cp-severity--${selected.severity}">${(selected.severity ?? 'none').toUpperCase()}</span>
+          <span class="cp-mode" style="color:${modeColor}">${modeLabel}</span>
+        </div>
         <div class="cp-address">${formatCrashAddress(selected)}</div>
         <div class="cp-meta">${selected.borough ?? ''} · ${formatCrashDate(selected)} · ${selected.crash_time ?? ''}</div>
         <div class="cp-summary">${crashSummary(selected)}</div>
