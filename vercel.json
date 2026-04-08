@@ -12,6 +12,14 @@
       "destination": "https://data.cityofnewyork.us/resource/w9ak-ipjd.json/:path*"
     },
     {
+      "source": "/api/restaurants",
+      "destination": "https://data.cityofnewyork.us/resource/43nn-pn8j.json"
+    },
+    {
+      "source": "/api/restaurants/:path*",
+      "destination": "https://data.cityofnewyork.us/resource/43nn-pn8j.json/:path*"
+    },
+    {
       "source": "/api/crashes",
       "destination": "https://data.cityofnewyork.us/resource/h9gi-nx95.json"
     },
@@ -42,6 +50,10 @@
     {
       "source": "/data/:path*",
       "destination": "/data/:path*"
+    },
+    {
+      "source": "/restaurants",
+      "destination": "/index.html"
     },
     {
       "source": "/crashes",

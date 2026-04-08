@@ -1,0 +1,178 @@
+/* ── RestaurantApp — NYC Restaurant Inspections ─────────────────────────── */
+
+.rest-shell {
+  position: fixed; inset: 0; display: flex;
+  background: #0a0c14; overflow: hidden; font-family: 'Courier New', monospace;
+}
+.rest-view { flex: 1; min-width: 0; height: 100%; position: relative; }
+
+/* Sidebar */
+.rs-sidebar {
+  width: 260px; min-width: 260px; height: 100%;
+  background: rgba(8,10,20,0.97); border-right: 1px solid rgba(255,255,255,0.07);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* Header */
+.rs-header { padding: 14px 14px 10px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
+.rs-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.rs-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.88); letter-spacing: 0.1em; }
+
+.rs-view-toggle-row { display: flex; gap: 4px; margin-bottom: 8px; }
+.rs-view-btn {
+  flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.42); font-family: 'Courier New', monospace;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+  padding: 5px 8px; border-radius: 3px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+}
+.rs-view-btn:hover { color: rgba(255,255,255,0.7); }
+.rs-view-btn.active { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.35); color: #34d399; }
+
+.rs-count-row { font-size: 10px; color: rgba(255,255,255,0.42); letter-spacing: 0.05em; }
+.rs-count { color: rgba(255,255,255,0.65); }
+.rs-error { color: #f87171; }
+.rs-loading { display: flex; align-items: center; gap: 6px; }
+.rs-spinner {
+  width: 8px; height: 8px; border: 1.5px solid rgba(255,255,255,0.15);
+  border-top-color: rgba(52,211,153,0.6); border-radius: 50%;
+  animation: rs-spin 0.8s linear infinite;
+}
+@keyframes rs-spin { to { transform: rotate(360deg); } }
+
+/* Body */
+.rs-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 14px; display: flex; flex-direction: column; gap: 12px; }
+.rs-body::-webkit-scrollbar { width: 3px; }
+.rs-body::-webkit-scrollbar-track { background: transparent; }
+.rs-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.rs-section { display: flex; flex-direction: column; gap: 5px; }
+.rs-section--list { flex: 1; min-height: 0; }
+.rs-section-label { font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.3); letter-spacing: 0.1em; }
+
+/* Pills */
+.rs-pill-row { display: flex; gap: 4px; }
+.rs-pill-row--wrap { flex-wrap: wrap; }
+.rs-pill {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.4); font-family: 'Courier New', monospace;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 3px 8px; border-radius: 3px; cursor: pointer; transition: all 0.15s;
+}
+.rs-pill:hover { color: rgba(255,255,255,0.7); }
+.rs-pill.active { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.35); color: #34d399; }
+
+/* Search */
+.rs-search-input {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.75); font-family: 'Courier New', monospace;
+  font-size: 9px; padding: 5px 8px; border-radius: 3px; outline: none; width: 100%;
+  box-sizing: border-box;
+}
+.rs-search-input:focus { border-color: rgba(52,211,153,0.4); }
+.rs-search-input::placeholder { color: rgba(255,255,255,0.25); }
+.rs-clear-btn {
+  font-size: 9px; font-family: 'Courier New', monospace;
+  color: rgba(255,255,255,0.3); background: none; border: none; cursor: pointer; padding: 0;
+}
+.rs-clear-btn:hover { color: rgba(255,255,255,0.6); }
+
+/* Legend */
+.rs-legend { display: flex; flex-direction: column; gap: 4px; }
+.rs-legend-row { display: flex; align-items: center; gap: 7px; font-size: 9px; color: rgba(255,255,255,0.5); }
+.rs-legend-grade {
+  width: 16px; height: 16px; border-radius: 3px; border: 1px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; flex-shrink: 0;
+}
+.rs-legend-hint { color: rgba(255,255,255,0.25); margin-left: auto; }
+
+/* List */
+.rs-list-container { flex: 1; min-height: 200px; }
+.rs-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 4px; cursor: pointer; border-radius: 4px; transition: background 0.1s;
+}
+.rs-row:hover { background: rgba(255,255,255,0.05); }
+.rs-row--selected { background: rgba(52,211,153,0.1) !important; }
+.rs-row-grade {
+  width: 18px; height: 18px; border-radius: 3px; border: 1px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
+}
+.rs-row-body { flex: 1; min-width: 0; }
+.rs-row-name { font-size: 10px; color: rgba(255,255,255,0.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rs-row-meta { font-size: 9px; color: rgba(255,255,255,0.35); }
+
+/* Mobile */
+.rest-mobile-fab {
+  display: none; position: fixed; top: 12px; right: 12px;
+  width: 38px; height: 38px; border-radius: 6px;
+  background: rgba(8,10,20,0.92); border: 1px solid rgba(52,211,153,0.35);
+  color: #34d399; font-size: 16px; cursor: pointer; z-index: 200;
+}
+.rest-mobile-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 149; }
+@media (max-width: 768px) {
+  .rest-shell { flex-direction: column; }
+  .rs-sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 150;
+    transform: translateX(-100%); transition: transform 0.2s; width: 280px; min-width: 280px;
+  }
+  .rs-sidebar--open { transform: translateX(0); }
+  .rest-mobile-fab { display: flex; align-items: center; justify-content: center; }
+  .rest-mobile-backdrop { display: block; }
+}
+
+/* ── Charts ──────────────────────────────────────────────────────────────── */
+.rest-charts {
+  width: 100%; height: 100%; background: #0a0c14;
+  display: flex; flex-direction: column; padding: 16px; gap: 12px;
+  box-sizing: border-box; overflow: hidden; font-family: 'Courier New', monospace;
+}
+.rc-header { display: flex; align-items: center; flex-shrink: 0; }
+.rc-title {
+  font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.88);
+  letter-spacing: 0.06em; display: flex; flex-direction: column; gap: 2px;
+}
+.rc-subtitle { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.42); letter-spacing: 0.04em; }
+
+/* Grid: grade + score (row 1, equal halves) | cuisine + violations + nta (row 2, thirds) */
+.rc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: minmax(100px, 0.6fr) minmax(160px, 1fr);
+  gap: 12px; flex: 1; min-height: 0; overflow-y: auto;
+}
+.rc-panel { border-radius: 8px; overflow: hidden; min-height: 0; }
+.rc-grade   { grid-column: 1 / 2; }
+.rc-score   { grid-column: 2 / -1; }
+
+@media (max-width: 768px) {
+  .rc-grid { grid-template-columns: 1fr; grid-template-rows: repeat(5, 160px); overflow-y: auto; }
+  .rc-grade { grid-column: 1; }
+  .rc-score { grid-column: 1; }
+}
+
+/* ── Popups ──────────────────────────────────────────────────────────────── */
+.rest-popup-wrap .maplibregl-popup-content {
+  background: rgba(8,10,20,0.96); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; padding: 0; overflow: hidden;
+  font-family: 'Courier New', monospace;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+}
+.rest-popup-wrap .maplibregl-popup-close-button { color: rgba(255,255,255,0.4); padding: 6px 8px; }
+.rest-popup { padding: 12px 14px; min-width: 200px; }
+.rp-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+.rp-grade {
+  width: 22px; height: 22px; border-radius: 4px; border: 1.5px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+}
+.rp-name { font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.88); line-height: 1.3; }
+.rp-meta { font-size: 9px; color: rgba(255,255,255,0.42); margin-bottom: 3px; }
+.rp-address { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 6px; }
+.rp-score { font-size: 10px; color: rgba(255,255,255,0.7); margin-bottom: 2px; }
+.rp-date { font-size: 9px; color: rgba(255,255,255,0.35); margin-bottom: 8px; }
+.rp-violations-label { font-size: 9px; font-weight: 700; color: rgba(239,68,68,0.7); letter-spacing: 0.06em; margin-bottom: 4px; }
+.rp-violation { font-size: 9px; color: rgba(255,255,255,0.5); margin-bottom: 3px; padding-left: 8px; }
+.rp-clean { font-size: 9px; color: rgba(52,211,153,0.7); }
