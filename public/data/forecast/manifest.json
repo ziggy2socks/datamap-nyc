@@ -1,42 +1,42 @@
 {
-  "generated": "2026-04-22T06:26:02Z",
-  "start_date": "2026-04-22",
-  "end_date": "2026-04-28",
+  "generated": "2026-04-23T06:11:40Z",
+  "start_date": "2026-04-23",
+  "end_date": "2026-04-29",
   "days": 7,
   "files": [
     {
       "day": 0,
-      "date": "2026-04-22",
+      "date": "2026-04-23",
       "path": "/data/forecast/forecast-d0.bin"
     },
     {
       "day": 1,
-      "date": "2026-04-23",
+      "date": "2026-04-24",
       "path": "/data/forecast/forecast-d1.bin"
     },
     {
       "day": 2,
-      "date": "2026-04-24",
+      "date": "2026-04-25",
       "path": "/data/forecast/forecast-d2.bin"
     },
     {
       "day": 3,
-      "date": "2026-04-25",
+      "date": "2026-04-26",
       "path": "/data/forecast/forecast-d3.bin"
     },
     {
       "day": 4,
-      "date": "2026-04-26",
+      "date": "2026-04-27",
       "path": "/data/forecast/forecast-d4.bin"
     },
     {
       "day": 5,
-      "date": "2026-04-27",
+      "date": "2026-04-28",
       "path": "/data/forecast/forecast-d5.bin"
     },
     {
       "day": 6,
-      "date": "2026-04-28",
+      "date": "2026-04-29",
       "path": "/data/forecast/forecast-d6.bin"
     }
   ]
